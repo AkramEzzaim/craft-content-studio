@@ -2,6 +2,7 @@ import "server-only";
 
 export type Repo = { owner: string; name: string; branch: string; token: string };
 export type GithubFile = { content: string; sha: string };
+export type GithubBinaryFile = { bytes: Buffer; sha: string };
 export type GithubWrite = { fileSha: string; commitSha: string };
 export class GithubError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); }
@@ -54,6 +55,17 @@ export async function getFile(repo: Repo, path: string): Promise<GithubFile | nu
   if (Array.isArray(data) || data.type !== "file" || typeof data.content !== "string" || !data.content) throw new Error("GitHub returned an unsupported file response");
   return { content: Buffer.from(data.content.replace(/\s/g, ""), "base64").toString("utf8"), sha: data.sha };
 }
+export async function getBinaryFile(repo: Repo, path: string): Promise<GithubBinaryFile | null> {
+  const data = await contents(repo, path, undefined, true);
+  if (!data) return null;
+  if (Array.isArray(data) || data.type !== "file" || typeof data.sha !== "string") throw new Error("GitHub returned an unsupported image response");
+  if (data.encoding === "base64" && typeof data.content === "string" && data.content) return { bytes: Buffer.from(data.content.replace(/\s/g, ""), "base64"), sha: data.sha };
+  const response = await fetch(`${root(repo)}/git/blobs/${encodeURIComponent(data.sha)}`, { cache: "no-store", headers: headers(repo) });
+  if (!response.ok) throw failure(response, "Image blob");
+  const blob = await response.json();
+  if (blob.encoding !== "base64" || typeof blob.content !== "string") throw new Error("GitHub returned an unsupported image blob");
+  return { bytes: Buffer.from(blob.content.replace(/\s/g, ""), "base64"), sha: data.sha };
+}
 export async function listDirectory(repo: Repo, path: string): Promise<{ name: string; path: string; sha: string }[]> {
   const data = await contents(repo, path, undefined, true);
   if (!data) return [];
@@ -64,6 +76,50 @@ export async function putFileWithCommit(repo: Repo, path: string, content: strin
   const data = await contents(repo, path, { method: "PUT", body: JSON.stringify({ message, content: Buffer.from(content).toString("base64"), branch: repo.branch, ...(sha ? { sha } : {}) }) });
   if (!data?.content?.sha || !data?.commit?.sha) throw new Error("GitHub did not return file and commit identifiers");
   return { fileSha: data.content.sha, commitSha: data.commit.sha };
+}
+export async function putBinaryFileWithCommit(repo: Repo, path: string, bytes: Buffer, message: string, sha?: string): Promise<GithubWrite> {
+  const data = await contents(repo, path, { method: "PUT", body: JSON.stringify({ message, content: bytes.toString("base64"), branch: repo.branch, ...(sha ? { sha } : {}) }) });
+  if (!data?.content?.sha || !data?.commit?.sha) throw new Error("GitHub did not return image and commit identifiers");
+  return { fileSha: data.content.sha, commitSha: data.commit.sha };
+}
+export async function branchHeadSha(repo: Repo): Promise<string> {
+  const refPath = `git/ref/heads/${repo.branch.split("/").map(encodeURIComponent).join("/")}`;
+  const response = await fetch(`${root(repo)}/${refPath}`, { cache: "no-store", headers: headers(repo) });
+  if (!response.ok) throw failure(response, "GitHub branch");
+  const data = await response.json();
+  if (typeof data?.object?.sha !== "string") throw new Error("GitHub did not return the branch head");
+  return data.object.sha;
+}
+export async function putFilesAtomic(repo: Repo, files: { path: string; bytes: Buffer }[], message: string, expectedBranchHead: string): Promise<{ commitSha: string; fileShas: Record<string, string> }> {
+  if (!files.length) throw new Error("No files to commit");
+  const endpoint = root(repo);
+  async function api(path: string, init?: RequestInit) {
+    const response = await fetch(`${endpoint}/${path}`, { ...init, cache: "no-store", headers: { ...headers(repo), ...init?.headers } });
+    if (!response.ok) throw failure(response, "GitHub commit");
+    return response.json();
+  }
+  const refPath = `git/ref/heads/${repo.branch.split("/").map(encodeURIComponent).join("/")}`;
+  const reference = await api(refPath);
+  const parent = reference?.object?.sha;
+  if (typeof parent !== "string") throw new Error("GitHub did not return the branch head");
+  if (parent !== expectedBranchHead) throw new GithubError("The public repository changed during publishing. Refresh and try again.", 409, "GITHUB_CONFLICT");
+  const prior = await api(`git/commits/${encodeURIComponent(parent)}`);
+  if (typeof prior?.tree?.sha !== "string") throw new Error("GitHub did not return the base tree");
+  const treeEntries: { path: string; mode: string; type: string; sha: string }[] = [];
+  const fileShas: Record<string, string> = {};
+  for (const file of files) {
+    const path = safePath(file.path);
+    const blob = await api("git/blobs", { method: "POST", body: JSON.stringify({ content: file.bytes.toString("base64"), encoding: "base64" }) });
+    if (typeof blob?.sha !== "string") throw new Error("GitHub did not return an image or article blob SHA");
+    treeEntries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+    fileShas[path] = blob.sha;
+  }
+  const tree = await api("git/trees", { method: "POST", body: JSON.stringify({ base_tree: prior.tree.sha, tree: treeEntries }) });
+  if (typeof tree?.sha !== "string") throw new Error("GitHub did not return the new tree SHA");
+  const commit = await api("git/commits", { method: "POST", body: JSON.stringify({ message, tree: tree.sha, parents: [parent] }) });
+  if (typeof commit?.sha !== "string") throw new Error("GitHub did not return the commit SHA");
+  await api(refPath.replace("git/ref/", "git/refs/"), { method: "PATCH", body: JSON.stringify({ sha: commit.sha, force: false }) });
+  return { commitSha: commit.sha, fileShas };
 }
 export async function putFile(repo: Repo, path: string, content: string, message: string, sha?: string): Promise<string> {
   return (await putFileWithCommit(repo, path, content, message, sha)).fileSha;

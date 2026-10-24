@@ -8,13 +8,14 @@ import { assess, publishIssues, publishingFieldsPresent, publishingReadiness } f
 type Preview = {
   title: string; slug: string; status: string; qualityScore: number; seoScore: number; warnings: string[];
   target: { repository: string; branch: string; path: string; url: string; filename: string };
-  existing: { sha: string } | null; storageSha: string; recoveryAvailable: boolean;
+  image?: { path: string; url: string; existingSha?: string; replaceRequired: boolean; sameContent: boolean } | null;
+  existing: { sha: string } | null; storageSha: string; recoveryAvailable: boolean; retryAvailable?: boolean;
 };
 type Result = { article: Article; commitSha?: string; url: string; path: string; reconciled: boolean };
-type ApiError = { error?: string; code?: string; existingSha?: string };
+type ApiError = { error?: string; code?: string; existingSha?: string; article?: Article };
 export function PublishPanel({ article, missingConfig, dirty, onArticleChange }: { article: Article; missingConfig: string[]; dirty: boolean; onArticleChange: (article: Article) => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [stage, setStage] = useState<"review" | "update" | "success">("review");
+  const [stage, setStage] = useState<"review" | "update" | "image" | "success">("review");
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -35,20 +36,28 @@ export function PublishPanel({ article, missingConfig, dirty, onArticleChange }:
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not inspect publishing target"); }
     finally { setLoading(false); }
   }
-  async function submit(mode: "create" | "update" | "reconcile") {
+  async function submit(mode: "create" | "update" | "reconcile", replaceImage = false) {
     if (!preview) return;
     setLoading(true); setError("");
     try {
-      const response = await fetch(`/api/articles/${article.id}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, expectedSha: preview.existing?.sha, storageSha: preview.storageSha }) });
+      const response = await fetch(`/api/articles/${article.id}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, expectedSha: preview.existing?.sha, expectedImageSha: preview.image?.existingSha, replaceImage, storageSha: preview.storageSha }) });
       const data = await response.json() as Result & ApiError;
       if (!response.ok) {
         if (data.code === "ARTICLE_ALREADY_EXISTS" && data.existingSha) {
           setPreview({ ...preview, existing: { sha: data.existingSha } });
           setStage("review");
         }
+        if (data.code === "PUBLIC_IMAGE_EXISTS" && data.existingSha && preview.image) {
+          setPreview({ ...preview, image: { ...preview.image, existingSha: data.existingSha, replaceRequired: true } });
+          setStage("review");
+        }
         if (data.code === "COMMIT_RECORDED_STATUS_PENDING") {
           const current = await fetch(`/api/articles/${article.id}`, { cache: "no-store" });
           if (current.ok) onArticleChange(await current.json() as Article);
+        }
+        if (data.code === "PUBLISHING_RETRY_AVAILABLE" && data.article) {
+          onArticleChange(data.article);
+          setPreview(null);
         }
         throw new Error(data.error || "Publishing failed");
       }
@@ -71,13 +80,15 @@ export function PublishPanel({ article, missingConfig, dirty, onArticleChange }:
       {mayRecover && <button className="button secondary publish-button" disabled={loading} onClick={open}>Check publishing outcome</button>}
     </div>
     {preview && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}><div className="publish-modal" role="dialog" aria-modal="true" aria-label="Confirm publication"><button className="modal-close" onClick={close} disabled={loading} aria-label="Close"><X size={20}/></button>
-      {stage === "success" && result ? <><div className="publish-success-icon"><Check size={28}/></div><div className="eyebrow">GITHUB COMMIT CONFIRMED</div><h2>Article published successfully.</h2><p>The GitHub commit is complete. Vercel may still be rebuilding the public site; the URL is expected, not yet verified live.</p><dl className="publish-summary"><div><dt>Git commit</dt><dd>{result.commitSha || "Commit recorded"}</dd></div><div><dt>Expected public URL</dt><dd>{result.url}</dd></div></dl><div className="publish-modal-actions">{commitUrl && <a className="button secondary" href={commitUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> View GitHub Commit</a>}<a className="button secondary" href={result.url} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open Public Article</a><Link className="button primary" href="/articles">Return to Articles</Link></div></> : <><div className="eyebrow">{stage === "update" ? "SECOND CONFIRMATION" : preview.status === "publishing" ? "PUBLISHING OUTCOME" : "PUBLISHING REVIEW"}</div><h2>{stage === "update" ? "Update the existing article?" : preview.status === "publishing" ? "Check the previous commit" : "Confirm publication"}</h2><p>{stage === "update" ? "This will replace the public file at the destination below using its current GitHub file SHA." : preview.status === "publishing" ? "A previous attempt may have committed successfully. Checking it will not create another public commit." : "Review the destination and scores before making a public GitHub commit."}</p>
-        <dl className="publish-summary"><div><dt>Title</dt><dd>{preview.title}</dd></div><div><dt>Slug</dt><dd>{preview.slug}</dd></div><div><dt>Status</dt><dd>{preview.status}</dd></div><div><dt>Content quality</dt><dd>{preview.qualityScore}/100</dd></div><div><dt>SEO score</dt><dd>{preview.seoScore}/100</dd></div><div><dt>Repository</dt><dd>{preview.target.repository}</dd></div><div><dt>Branch</dt><dd>{preview.target.branch}</dd></div><div><dt>Destination</dt><dd>{preview.target.path}</dd></div><div><dt>Filename</dt><dd>{preview.target.filename}</dd></div><div><dt>Expected URL</dt><dd>{preview.target.url}</dd></div></dl>
+      {stage === "success" && result ? <><div className="publish-success-icon"><Check size={28}/></div><div className="eyebrow">GITHUB COMMIT CONFIRMED</div><h2>Article published successfully.</h2><p>The GitHub commit is complete. Vercel may still be rebuilding the public site; the URL is expected, not yet verified live.</p><dl className="publish-summary"><div><dt>Git commit</dt><dd>{result.commitSha || "Commit recorded"}</dd></div><div><dt>Expected public URL</dt><dd>{result.url}</dd></div></dl><div className="publish-modal-actions">{commitUrl && <a className="button secondary" href={commitUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> View GitHub Commit</a>}<a className="button secondary" href={result.url} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open Public Article</a><Link className="button primary" href="/articles">Return to Articles</Link></div></> : <><div className="eyebrow">{stage === "update" || stage === "image" ? "SECOND CONFIRMATION" : preview.status === "publishing" ? "PUBLISHING OUTCOME" : "PUBLISHING REVIEW"}</div><h2>{stage === "update" ? "Update the existing article?" : stage === "image" ? "Replace the existing public image?" : preview.status === "publishing" ? "Check the previous commit" : "Confirm publication"}</h2><p>{stage === "update" ? "This will replace the public article and, if needed, its featured image using their current GitHub file SHAs." : stage === "image" ? "An image with this filename already exists. Confirming will replace it before committing the new article." : preview.status === "publishing" ? "A previous attempt may have committed successfully. Checking it will not create another public commit." : "Review the article and image destinations before making a public GitHub commit."}</p>
+        <dl className="publish-summary"><div><dt>Title</dt><dd>{preview.title}</dd></div><div><dt>Slug</dt><dd>{preview.slug}</dd></div><div><dt>Status</dt><dd>{preview.status}</dd></div><div><dt>Content quality</dt><dd>{preview.qualityScore}/100</dd></div><div><dt>SEO score</dt><dd>{preview.seoScore}/100</dd></div><div><dt>Repository</dt><dd>{preview.target.repository}</dd></div><div><dt>Branch</dt><dd>{preview.target.branch}</dd></div><div><dt>Article file</dt><dd>{preview.target.path}</dd></div>{preview.image && <div><dt>Featured image</dt><dd>{preview.image.path}</dd></div>}<div><dt>Filename</dt><dd>{preview.target.filename}</dd></div><div><dt>Expected URL</dt><dd>{preview.target.url}</dd></div></dl>
         {preview.existing && preview.status !== "publishing" && <div className="publish-conflict"><strong>An article with this slug already exists.</strong><span>It will remain unchanged unless you explicitly confirm the update.</span></div>}
-        {preview.status === "publishing" && !preview.recoveryAvailable && <div className="form-error" role="alert">The public file does not match this publishing attempt. Inspect the public repository before trying again.</div>}
+        {preview.image?.replaceRequired && preview.status !== "publishing" && <div className="publish-conflict"><strong>A public image with this filename already exists.</strong><span>Confirm replacement to use the selected draft image.</span></div>}
+        {preview.status === "publishing" && !preview.recoveryAvailable && !preview.retryAvailable && <div className="form-error" role="alert">The public file does not match this publishing attempt. Inspect the public repository before trying again.</div>}
+        {preview.retryAvailable && <p className="publish-hint">No public article commit was found. Check this outcome to unlock the draft for a safe retry.</p>}
         {preview.warnings.length > 0 && <details className="publish-warnings"><summary>{preview.warnings.length} editorial suggestions remain</summary><ul>{preview.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul></details>}
         {error && <div className="form-error" role="alert">{error}</div>}
-        <div className="publish-modal-actions"><button className="button secondary" onClick={close} disabled={loading}>Cancel</button>{preview.status === "publishing" ? <button className="button primary" onClick={() => submit("reconcile")} disabled={loading || !preview.recoveryAvailable}>{loading ? "Checking…" : "Confirm status check"}</button> : preview.existing ? stage === "update" ? <button className="button primary" onClick={() => submit("update")} disabled={loading}>{loading ? "Updating…" : "Confirm Update"}</button> : <button className="button primary" onClick={() => setStage("update")} disabled={loading}>Update existing article</button> : <button className="button primary" onClick={() => submit("create")} disabled={loading}>{loading ? "Publishing…" : "Confirm Publish"}</button>}</div>
+        <div className="publish-modal-actions"><button className="button secondary" onClick={close} disabled={loading}>Cancel</button>{preview.status === "publishing" ? <button className="button primary" onClick={() => submit("reconcile")} disabled={loading || (!preview.recoveryAvailable && !preview.retryAvailable)}>{loading ? "Checking…" : preview.retryAvailable ? "Check and unlock retry" : "Confirm status check"}</button> : preview.existing ? stage === "update" ? <button className="button primary" onClick={() => submit("update", !!preview.image?.replaceRequired)} disabled={loading}>{loading ? "Updating…" : "Confirm Update"}</button> : <button className="button primary" onClick={() => setStage("update")} disabled={loading}>Update existing article</button> : preview.image?.replaceRequired ? stage === "image" ? <button className="button primary" onClick={() => submit("create", true)} disabled={loading}>{loading ? "Publishing…" : "Confirm Image Replacement & Publish"}</button> : <button className="button primary" onClick={() => setStage("image")} disabled={loading}>Replace existing image</button> : <button className="button primary" onClick={() => submit("create")} disabled={loading}>{loading ? "Publishing…" : "Confirm Publish"}</button>}</div>
       </>}
     </div></div>}
   </>;

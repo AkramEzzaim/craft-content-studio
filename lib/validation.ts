@@ -1,16 +1,51 @@
 import { accuracyItems, articleTypes, categories, emptyArticle, slugify, type Article } from "./types";
+import { applyArticleDefaults } from "./article-defaults";
+import { generatedMarkdown } from "./article-markdown";
+import { publicImageUrl } from "./image-path";
 const string = (v: unknown, max = 10000) => typeof v === "string" ? v.slice(0, max).trim() : "";
 const list = (v: unknown) => Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 80).map(x => x.slice(0, 500).trim()).filter(Boolean) : [];
 const url = (v: unknown) => { const s = string(v, 2000); return !s || /^https:\/\/[^\s]+$/i.test(s) || /^\/images\/[a-z0-9/_-]+\.(?:png|jpe?g|webp|avif)$/i.test(s) ? s : ""; };
 export function parseArticle(value: unknown, prior?: Article): Article {
   if (!value || typeof value !== "object") throw new Error("Invalid article data");
-  const v = value as Record<string, unknown>; const base = prior || emptyArticle();
-  const out: Article = { ...base, title: string(v.title, 180), slug: slugify(string(v.slug, 100)), primaryKeyword: string(v.primaryKeyword, 150), secondaryKeywords: list(v.secondaryKeywords), category: categories.includes(v.category as "crochet") ? String(v.category) : "crochet", articleType: articleTypes.includes(v.articleType as typeof articleTypes[number]) ? String(v.articleType) : "Other", difficulty: string(v.difficulty, 80), estimatedTime: string(v.estimatedTime, 80), author: string(v.author, 100), description: string(v.description, 300), excerpt: string(v.excerpt, 500), yarnType: string(v.yarnType, 100), yarnWeight: string(v.yarnWeight, 100), hookSize: string(v.hookSize, 100), gauge: string(v.gauge, 200), dimensions: string(v.dimensions, 200), requiredSkills: list(v.requiredSkills), materials: list(v.materials), tools: list(v.tools), abbreviations: list(v.abbreviations), patternNotes: list(v.patternNotes), sizing: string(v.sizing, 500), safetyNotes: string(v.safetyNotes, 500), contentMarkdown: string(v.contentMarkdown, 100000), featuredImagePrompt: string(v.featuredImagePrompt, 1000), faq: Array.isArray(v.faq) ? v.faq.slice(0, 30).map((x: unknown) => ({ question: string((x as Record<string, unknown>)?.question, 300), answer: string((x as Record<string, unknown>)?.answer, 2000) })).filter(x => x.question && x.answer) : [], featuredImage: url(v.featuredImage), imageAlt: string(v.imageAlt, 300), pinterestImage: url(v.pinterestImage), stepImages: Array.isArray(v.stepImages) ? v.stepImages.slice(0, 40).map((x: unknown) => ({ url: url((x as Record<string, unknown>)?.url), alt: string((x as Record<string, unknown>)?.alt, 300), caption: string((x as Record<string, unknown>)?.caption, 300) })).filter(x => x.url) : [], seoTitle: string(v.seoTitle, 180), metaDescription: string(v.metaDescription, 300), canonicalSlug: slugify(string(v.canonicalSlug, 100)), tags: list(v.tags), ogTitle: string(v.ogTitle, 180), ogDescription: string(v.ogDescription, 300), pinterestTitle: string(v.pinterestTitle, 180), pinterestDescription: string(v.pinterestDescription, 500), accuracyChecks: list(v.accuracyChecks).filter(x => (accuracyItems as readonly string[]).includes(x)), updatedAt: new Date().toISOString(), storageSha: prior?.storageSha };
-  if (prior) { out.id = prior.id; out.createdAt = prior.createdAt; out.aiGenerated = prior.aiGenerated; out.publishedAt = prior.publishedAt; out.publicUrl = prior.publicUrl; out.publishedSha = prior.publishedSha; out.publishedPath = prior.publishedPath; out.githubCommitSha = prior.githubCommitSha; out.githubPath = prior.githubPath; out.githubRepository = prior.githubRepository; out.status = "review"; }
-  else { out.status = "draft"; }
+  const v = value as Record<string, unknown>;
+  const base = prior || emptyArticle();
+  const mode = v.contentMode === "structured" || v.contentMode === "markdown" ? v.contentMode :
+    prior ? (prior.contentMode || "markdown") : v.contentMarkdown ? "markdown" : "structured";
+  const out: Article = {
+    ...base,
+    title: string(v.title, 180), slug: slugify(string(v.slug, 100)), primaryKeyword: string(v.primaryKeyword, 150), secondaryKeywords: list(v.secondaryKeywords),
+    category: categories.includes(v.category as "crochet") ? String(v.category) : "crochet",
+    articleType: articleTypes.includes(v.articleType as typeof articleTypes[number]) ? String(v.articleType) : "Other",
+    difficulty: string(v.difficulty, 80), estimatedTime: string(v.estimatedTime, 80), author: string(v.author, 100),
+    description: string(v.description, 300), excerpt: string(v.excerpt, 500), yarnType: string(v.yarnType, 100), yarnWeight: string(v.yarnWeight, 100),
+    hookSize: string(v.hookSize, 100), gauge: string(v.gauge, 200), dimensions: string(v.dimensions, 200), requiredSkills: list(v.requiredSkills),
+    materials: list(v.materials), tools: list(v.tools), abbreviations: list(v.abbreviations), patternNotes: list(v.patternNotes),
+    sizing: string(v.sizing, 500), safetyNotes: string(v.safetyNotes, 500), contentMarkdown: string(v.contentMarkdown, 100000),
+    contentMode: mode, introduction: string(v.introduction, 10000),
+    instructions: Array.isArray(v.instructions) ? v.instructions.slice(0, 80).map((item: unknown) => ({
+      title: string((item as Record<string, unknown>)?.title, 150), instruction: string((item as Record<string, unknown>)?.instruction, 5000),
+    })).filter(item => item.title || item.instruction) : [],
+    beginnerTips: list(v.beginnerTips), featuredImagePrompt: string(v.featuredImagePrompt, 1000),
+    faq: Array.isArray(v.faq) ? v.faq.slice(0, 30).map((item: unknown) => ({ question: string((item as Record<string, unknown>)?.question, 300), answer: string((item as Record<string, unknown>)?.answer, 2000) })).filter(item => item.question && item.answer) : [],
+    featuredImage: url(v.featuredImage), imageAlt: string(v.imageAlt, 300), pinterestImage: url(v.pinterestImage),
+    stepImages: Array.isArray(v.stepImages) ? v.stepImages.slice(0, 40).map((item: unknown) => ({ url: url((item as Record<string, unknown>)?.url), alt: string((item as Record<string, unknown>)?.alt, 300), caption: string((item as Record<string, unknown>)?.caption, 300) })).filter(item => item.url) : [],
+    seoTitle: string(v.seoTitle, 180), metaDescription: string(v.metaDescription, 300), canonicalSlug: slugify(string(v.canonicalSlug, 100)),
+    tags: list(v.tags), ogTitle: string(v.ogTitle, 180), ogDescription: string(v.ogDescription, 300), pinterestTitle: string(v.pinterestTitle, 180),
+    pinterestDescription: string(v.pinterestDescription, 500), accuracyChecks: list(v.accuracyChecks).filter(item => (accuracyItems as readonly string[]).includes(item)),
+    updatedAt: new Date().toISOString(), storageSha: prior?.storageSha,
+  };
+  if (prior) {
+    out.id = prior.id; out.createdAt = prior.createdAt; out.aiGenerated = prior.aiGenerated; out.publishedAt = prior.publishedAt;
+    out.publicUrl = prior.publicUrl; out.publishedSha = prior.publishedSha; out.publishedPath = prior.publishedPath;
+    out.githubCommitSha = prior.githubCommitSha; out.githubPath = prior.githubPath; out.githubRepository = prior.githubRepository;
+    out.draftImage = prior.draftImage; out.status = "review";
+  } else out.status = "draft";
   if (v.status === "archived" && prior) out.status = "archived";
   if (v.status === "ready" && prior) out.status = "ready";
-  return out;
+  const withDefaults = applyArticleDefaults(out);
+  if (withDefaults.draftImage) withDefaults.featuredImage = publicImageUrl(withDefaults.slug, withDefaults.draftImage.extension);
+  if (withDefaults.contentMode === "structured") withDefaults.contentMarkdown = generatedMarkdown(withDefaults);
+  return withDefaults;
 }
 export type Check = { label: string; pass: boolean };
 function hasEmptySection(body: string) {
@@ -62,7 +97,7 @@ export function publishIssues(a: Article): string[] {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug)) issues.push("Slug must use lowercase words separated by hyphens");
   if (!categories.includes(a.category as "crochet")) issues.push("Category is not supported by the studio");
   if (!/^## Instructions\s*$/im.test(a.contentMarkdown)) issues.push("The public site requires a ## Instructions section");
-  if (a.articleType === "Free Crochet Pattern" && !/^## Materials\s*$/im.test(a.contentMarkdown) && !a.materials?.length) issues.push("Add materials to the article body or crochet details");
+  if (!/^## Materials\s*$/im.test(a.contentMarkdown) && !a.materials?.length) issues.push("Add at least one material");
   if (a.canonicalSlug && a.canonicalSlug !== a.slug) issues.push("Canonical slug must match the published article slug");
   if (a.articleType === "Free Crochet Pattern" && !accuracyItems.every(x => a.accuracyChecks?.includes(x))) issues.push("Complete all crochet accuracy checks");
   if (/^# /m.test(a.contentMarkdown)) issues.push("Remove body H1; the public site adds the title H1");
@@ -75,7 +110,7 @@ export function publishIssues(a: Article): string[] {
 export function publishingFieldsPresent(a: Article): boolean {
   return !!a.title?.trim() && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug) &&
     !!a.description?.trim() && !!a.difficulty?.trim() && !!a.author?.trim() &&
-    !!a.featuredImage?.trim() && !!a.imageAlt?.trim() && !!a.contentMarkdown?.trim() &&
+    !!a.featuredImage?.trim() && !!a.imageAlt?.trim() && !!a.contentMarkdown?.trim() && (!!a.materials?.length || /^## Materials\s*$/im.test(a.contentMarkdown)) &&
     /^## Instructions\s*$/im.test(a.contentMarkdown) && categories.includes(a.category as "crochet");
 }
 export function publishingReadiness(a: Article, configured: boolean): Check[] {
@@ -83,6 +118,7 @@ export function publishingReadiness(a: Article, configured: boolean): Check[] {
     { label: "Title present", pass: !!a.title?.trim() },
     { label: "Slug valid", pass: /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug) },
     { label: "Content and instructions present", pass: !!a.contentMarkdown?.trim() && /^## Instructions\s*$/im.test(a.contentMarkdown) },
+    { label: "Materials present", pass: !!a.materials?.length || /^## Materials\s*$/im.test(a.contentMarkdown) },
     { label: "Category supported", pass: categories.includes(a.category as "crochet") },
     { label: "Required metadata present", pass: !!a.description && !!a.difficulty && !!a.author && !!a.featuredImage && !!a.imageAlt },
     { label: "Crochet accuracy reviewed", pass: a.articleType !== "Free Crochet Pattern" || accuracyItems.every(x => a.accuracyChecks?.includes(x)) },

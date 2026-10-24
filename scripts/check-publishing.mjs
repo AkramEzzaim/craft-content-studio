@@ -12,7 +12,11 @@ process.env.CRAFT_CONTENT_PATH = "content/patterns";
 process.env.CRAFT_SITE_URL = "https://craft-iota-wheat.vercel.app";
 const types = load("lib/types.ts");
 const body = load("lib/public-body.ts");
-const validation = load("lib/validation.ts", { "./types": types });
+const defaults = load("lib/article-defaults.ts", { "./types": types });
+const articleMarkdown = load("lib/article-markdown.ts");
+const imagePath = load("lib/image-path.ts");
+const images = load("lib/images.ts", { "server-only": {}, "./image-path": imagePath });
+const validation = load("lib/validation.ts", { "./types": types, "./article-defaults": defaults, "./article-markdown": articleMarkdown, "./image-path": imagePath });
 const repo = { owner: "AkramEzzaim", name: "craft", branch: "main", token: "test-only" };
 const calls = [];
 let remote = null;
@@ -23,6 +27,9 @@ const github = {
   verifyRepositoryBranch: async () => { branchChecks++; },
   fileExists: async (_repo, path) => path === "public/images/patterns/flower.png",
   getFile: async () => remote,
+  getBinaryFile: async () => null,
+  studioRepo: () => ({ ...repo, name: "private-studio" }),
+  putBinaryFileWithCommit: async () => { throw new Error("Unexpected image write for legacy fixture"); },
   latestCommitSha: async () => "c".repeat(40),
   putFileWithCommit: async (_repo, path, content, message, sha) => {
     calls.push({ path, content, message, sha });
@@ -31,7 +38,7 @@ const github = {
   },
 };
 const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": github, "./validation": validation, "./public-body": body });
-const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./validation": validation, "./public-body": body });
+const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./validation": validation, "./public-body": body, "./image-path": imagePath, "./images": images });
 const React = await import("react");
 const ReactDOMServer = await import("react-dom/server");
 const ui = load("components/publish-panel.tsx", { "react": React, "react/jsx-runtime": await import("react/jsx-runtime"), "next/link": ({ children }) => children, "lucide-react": { Check: () => null, ExternalLink: () => null, Send: () => null, X: () => null }, "@/lib/validation": validation }, true);
@@ -123,6 +130,13 @@ const duplicate = await route.POST(req({ mode: "create", storageSha: stored.stor
 assert.equal(duplicate.status, 409);
 assert.equal((await duplicate.json()).code, "ARTICLE_ALREADY_EXISTS");
 assert.equal(saves, 0);
+remote = null; stored = { ...article, status: "publishing", storageSha: "draft-pending" }; saves = 0;
+const pendingPreview = await route.GET(new Request("http://localhost/api/articles/id/publish"), context);
+assert.equal((await pendingPreview.json()).retryAvailable, true);
+const unlocked = await route.POST(req({ mode: "reconcile", storageSha: stored.storageSha }), context);
+assert.equal(unlocked.status, 409);
+assert.equal((await unlocked.json()).code, "PUBLISHING_RETRY_AVAILABLE");
+assert.equal(stored.status, "failed");
 // Check the actual GitHub Contents API payload without making a network request.
 const realGithub = load("lib/github.ts", { "server-only": {} });
 for (const key of realGithub.craftRequiredConfig) process.env[key] = "test-configured";

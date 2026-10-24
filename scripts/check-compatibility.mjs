@@ -10,7 +10,10 @@ function load(file, imports = {}) {
   return mod.exports;
 }
 const types = load("lib/types.ts");
-const validation = load("lib/validation.ts", { "./types": types });
+const defaults = load("lib/article-defaults.ts", { "./types": types });
+const articleMarkdown = load("lib/article-markdown.ts");
+const imagePath = load("lib/image-path.ts");
+const validation = load("lib/validation.ts", { "./types": types, "./article-defaults": defaults, "./article-markdown": articleMarkdown, "./image-path": imagePath });
 const body = load("lib/public-body.ts");
 const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": { safePath: x => x }, "./validation": validation, "./public-body": body });
 const article = types.emptyArticle();

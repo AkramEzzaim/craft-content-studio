@@ -40,7 +40,7 @@ export async function inspectPublicArticle(a: Article): Promise<GithubFile | nul
 }
 export async function validatePublicAssets(a: Article) {
   const repo = craftRepo();
-  const paths = [a.featuredImage, a.pinterestImage].filter(Boolean);
+  const paths = [a.draftImage ? "" : a.featuredImage, a.pinterestImage].filter(Boolean);
   for (const image of paths) {
     if (!/^\/images\/[a-z0-9/_-]+\.(?:png|jpe?g|webp|avif)$/i.test(image)) throw new Error("Public images must use a path under /images in the craft repository");
     if (!(await fileExists(repo, `public/${image.slice(1)}`))) throw new Error(`Image does not exist in the craft repository: ${image}`);
