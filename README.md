@@ -21,7 +21,7 @@ The preview reproduces the public article hierarchy and the supported Markdown r
 1. `npm ci`
 2. Copy `.env.example` to `.env.local` and fill in the required values. Use `npm run hash-password` to generate `ADMIN_PASSWORD_HASH`; use a random secret of at least 32 characters for `SESSION_SECRET`.
 3. Create and initialize a **separate private GitHub repository** for studio drafts. Set `STUDIO_GITHUB_OWNER`, `STUDIO_GITHUB_REPO`, `STUDIO_GITHUB_BRANCH`, and `STUDIO_GITHUB_TOKEN`. The token needs Contents read/write on that private repository. Do not use the public craft repository for drafts.
-4. Set `CRAFT_GITHUB_TOKEN` with Contents read/write on the public craft repository. Configure `CRAFT_GITHUB_OWNER`, `CRAFT_GITHUB_REPO`, `CRAFT_GITHUB_BRANCH`, `CRAFT_CONTENT_PATH=content/patterns`, and `CRAFT_SITE_URL`.
+4. Set `CRAFT_GITHUB_TOKEN` with Contents read/write on the public craft repository. Configure `CRAFT_GITHUB_OWNER`, `CRAFT_GITHUB_REPO`, `CRAFT_GITHUB_BRANCH`, and `CRAFT_CONTENT_PATH=content/patterns`. Optionally set `CRAFT_SITE_URL`; it defaults to `https://craft-iota-wheat.vercel.app`.
 5. Optionally configure `N8N_CONTENT_WEBHOOK_URL` and `N8N_CONTENT_WEBHOOK_SECRET` for AI drafts.
 6. Run `npm run dev`. Deploy this repository as its own Vercel project with the same environment variables.
 

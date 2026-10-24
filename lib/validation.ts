@@ -72,6 +72,12 @@ export function publishIssues(a: Article): string[] {
   if (hasEmptySection(a.contentMarkdown)) issues.push("Remove empty Markdown sections");
   return issues;
 }
+export function publishingFieldsPresent(a: Article): boolean {
+  return !!a.title?.trim() && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug) &&
+    !!a.description?.trim() && !!a.difficulty?.trim() && !!a.author?.trim() &&
+    !!a.featuredImage?.trim() && !!a.imageAlt?.trim() && !!a.contentMarkdown?.trim() &&
+    /^## Instructions\s*$/im.test(a.contentMarkdown) && categories.includes(a.category as "crochet");
+}
 export function publishingReadiness(a: Article, configured: boolean): Check[] {
   return [
     { label: "Title present", pass: !!a.title?.trim() },

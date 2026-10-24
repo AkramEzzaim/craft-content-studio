@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Check, ExternalLink, Send, X } from "lucide-react";
 import type { Article } from "@/lib/types";
-import { assess, publishIssues, publishingReadiness } from "@/lib/validation";
+import { assess, publishIssues, publishingFieldsPresent, publishingReadiness } from "@/lib/validation";
 
 type Preview = {
   title: string; slug: string; status: string; qualityScore: number; seoScore: number; warnings: string[];
@@ -12,16 +12,18 @@ type Preview = {
 };
 type Result = { article: Article; commitSha?: string; url: string; path: string; reconciled: boolean };
 type ApiError = { error?: string; code?: string; existingSha?: string };
-export function PublishPanel({ article, configured, dirty, onArticleChange }: { article: Article; configured: boolean; dirty: boolean; onArticleChange: (article: Article) => void }) {
+export function PublishPanel({ article, missingConfig, dirty, onArticleChange }: { article: Article; missingConfig: string[]; dirty: boolean; onArticleChange: (article: Article) => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [stage, setStage] = useState<"review" | "update" | "success">("review");
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const configured = missingConfig.length === 0;
   const issues = publishIssues(article);
   const readiness = publishingReadiness(article, configured);
   const scores = assess(article);
-  const mayPublish = !!article.storageSha && article.status === "ready" && configured && !dirty && issues.length === 0;
+  const showPublish = !!article.storageSha && configured && publishingFieldsPresent(article) && !["publishing", "published", "archived"].includes(article.status);
+  const mayPublish = showPublish && article.status === "ready" && !dirty && issues.length === 0;
   const mayRecover = !!article.storageSha && article.status === "publishing" && configured && !dirty;
   async function open() {
     setLoading(true); setError(""); setResult(null); setStage("review");
@@ -60,10 +62,12 @@ export function PublishPanel({ article, configured, dirty, onArticleChange }: { 
     <div className="publish-readiness"><div className="subsection-head"><h3>Publishing readiness</h3><span className={readiness.every(x => x.pass) && !dirty && article.status === "ready" ? "ready-label" : "needs-review-label"}>{readiness.every(x => x.pass) && !dirty && article.status === "ready" ? "Ready to publish" : "Needs review"}</span></div><div className="readiness-grid">{readiness.map(check => <div className="check-row" key={check.label}><span className={check.pass ? "passed" : "unchecked"}>{check.pass ? "✓" : "·"}</span>{check.label}</div>)}</div>
       {issues.length > 0 && <ul className="issue-list">{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
       {dirty && <p className="publish-hint">Save these changes and mark the article ready again before publishing.</p>}
-      {!configured && <p className="publish-hint">Public GitHub publishing is not configured. Check Settings.</p>}
+      {missingConfig.length > 0 && <div className="publish-hint" role="status">Missing publishing configuration: <strong>{missingConfig.join(", ")}</strong>. Set these server environment variables and restart or redeploy Studio.</div>}
+      {!!article.storageSha && configured && !publishingFieldsPresent(article) && <p className="publish-hint">Complete the required article fields shown above to reveal the Publish button.</p>}
+      {showPublish && !mayPublish && article.status !== "ready" && <p className="publish-hint">Mark this saved article ready in the Review tab before publishing.</p>}
       {error && !preview && <div className="form-error" role="alert">{error}</div>}
       {!dirty && issues.length === 0 && scores.seoScore < 70 && <p className="publish-hint">SEO score is {scores.seoScore}/100. These are recommendations; you can publish after the required checks pass.</p>}
-      {mayPublish && <button className="button primary publish-button" disabled={loading} onClick={open}><Send size={17}/> PUBLISH TO HEARTH &amp; THREAD</button>}
+      {showPublish && <button className="button primary publish-button" disabled={!mayPublish || loading} onClick={open}><Send size={17}/> PUBLISH TO HEARTH &amp; THREAD</button>}
       {mayRecover && <button className="button secondary publish-button" disabled={loading} onClick={open}>Check publishing outcome</button>}
     </div>
     {preview && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}><div className="publish-modal" role="dialog" aria-modal="true" aria-label="Confirm publication"><button className="modal-close" onClick={close} disabled={loading} aria-label="Close"><X size={20}/></button>

@@ -13,12 +13,16 @@ export function studioRepo(): Repo {
   if (owner === process.env.CRAFT_GITHUB_OWNER && name === process.env.CRAFT_GITHUB_REPO) throw new Error("Private draft repository must be separate from the public craft repository");
   return { owner, name, branch, token };
 }
-export function craftConfigReady(): boolean {
-  return ["CRAFT_GITHUB_TOKEN", "CRAFT_GITHUB_OWNER", "CRAFT_GITHUB_REPO", "CRAFT_GITHUB_BRANCH", "CRAFT_CONTENT_PATH", "CRAFT_SITE_URL"].every(key => !!process.env[key]?.trim());
+export const craftRequiredConfig = ["CRAFT_GITHUB_TOKEN", "CRAFT_GITHUB_OWNER", "CRAFT_GITHUB_REPO", "CRAFT_GITHUB_BRANCH", "CRAFT_CONTENT_PATH"] as const;
+export function craftMissingConfig(): string[] {
+  return craftRequiredConfig.filter(key => !process.env[key]?.trim());
 }
+export function craftConfigReady(): boolean { return craftMissingConfig().length === 0; }
 export function craftRepo(): Repo {
   const { CRAFT_GITHUB_OWNER: owner, CRAFT_GITHUB_REPO: name, CRAFT_GITHUB_BRANCH: branch, CRAFT_GITHUB_TOKEN: token } = process.env;
-  if (!owner || !name || !branch || !token || !process.env.CRAFT_CONTENT_PATH || !process.env.CRAFT_SITE_URL) throw new Error("Public craft publishing configuration is incomplete");
+  const missing = craftMissingConfig();
+  if (missing.length) throw new Error(`Public craft publishing configuration is missing: ${missing.join(", ")}`);
+  if (!owner || !name || !branch || !token) throw new Error("Public craft publishing configuration is incomplete");
   return { owner, name, branch, token };
 }
 export function safePath(path: string) {

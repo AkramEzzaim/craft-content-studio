@@ -12,8 +12,7 @@ export function publicPath(a: Article) {
   return safePath(`${root}/${a.slug}.md`);
 }
 export function publicUrl(a: Article) {
-  const base = process.env.CRAFT_SITE_URL;
-  if (!base) throw new Error("Public site URL is not configured");
+  const base = process.env.CRAFT_SITE_URL?.trim() || "https://craft-iota-wheat.vercel.app";
   const parsed = new URL(base);
   if (parsed.protocol !== "https:") throw new Error("Public site URL must use HTTPS");
   return `${parsed.origin}/patterns/${a.slug}`;
