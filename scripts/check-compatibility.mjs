@@ -1,0 +1,29 @@
+import fs from "node:fs";
+import path from "node:path";
+import assert from "node:assert/strict";
+import ts from "typescript";
+function load(file, imports = {}) {
+  const source = fs.readFileSync(file, "utf8");
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const mod = { exports: {} };
+  new Function("require", "module", "exports", code)((name) => { if (name in imports) return imports[name]; throw new Error(`Unexpected import ${name}`); }, mod, mod.exports);
+  return mod.exports;
+}
+const types = load("lib/types.ts");
+const validation = load("lib/validation.ts", { "./types": types });
+const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": { safePath: x => x }, "./validation": validation });
+const article = types.emptyArticle();
+Object.assign(article, { title: "Easy Crochet Flower Pattern", slug: "easy-crochet-flower", primaryKeyword: "easy crochet flower", description: "Create a small five petal flower with simple stitches.", author: "Hearth & Thread Studio", featuredImage: "/images/patterns/easy-crochet-flower.png", imageAlt: "Pink crocheted flower", seoTitle: "Easy Crochet Flower Pattern", metaDescription: "Learn to make a crochet flower with clear materials, beginner friendly steps, and a simple finish. This quick project uses basic stitches and cotton yarn.", materials: ["Cotton yarn"], tools: ["3.5 mm hook"], accuracyChecks: [...types.accuracyItems], contentMarkdown: `An easy crochet flower is a small project for learning to work in the round. Follow each instruction slowly and count the stitches after every step. This guide uses US crochet terms and explains the simple finish.\n\n## Materials\n- Cotton yarn\n\n## Tools\n- 3.5 mm hook\n\n## Instructions\n### Make the center\n${"Work a stitch carefully and count it before continuing. ".repeat(55)}\n\n## Tips\n- Keep the tension even.\n\n## FAQ\n### Can I change the yarn?\nYes, but the finished size will change.` });
+assert.deepEqual(validation.publishIssues(article), []);
+const markdown = adapter.serializePublicArticle(article, "2026-10-24");
+const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(markdown);
+assert.ok(match, "frontmatter uses the public site's expected delimiters");
+const fields = Object.fromEntries(match[1].split("\n").map(line => { const at=line.indexOf(":");return [line.slice(0,at),line.slice(at+1).trim().replace(/^['"]|['"]$/g,"")]; }));
+for (const key of ["title","slug","description","category","difficulty","featuredImage","publishedAt","status","author"]) assert.ok(fields[key], `missing ${key}`);
+assert.equal(fields.status, "published");
+assert.equal(fields.category, "crochet");
+assert.match(match[2], /## Instructions/);
+assert.ok(fs.existsSync(path.join("../craft/public", fields.featuredImage.slice(1))), "image exists in inspected public repo");
+assert.ok(validation.publishIssues({ ...article, accuracyChecks: [] }).some(x => x.includes("accuracy")));
+assert.ok(validation.publishIssues({ ...article, contentMarkdown: article.contentMarkdown + "\n[link](/patterns/example)" }).some(x => x.includes("renderer")));
+console.log("Public Markdown schema and publishing gates verified.");
