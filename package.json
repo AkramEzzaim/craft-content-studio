@@ -11,7 +11,8 @@
     "hash-password": "node scripts/hash-password.mjs",
     "check:compatibility": "node scripts/check-compatibility.mjs",
     "check:publishing": "node scripts/check-publishing.mjs",
-    "check:images": "node scripts/check-images.mjs"
+    "check:images": "node scripts/check-images.mjs",
+    "check:builder": "node scripts/check-builder.mjs"
   },
   "dependencies": {
     "next": "16.4.2",

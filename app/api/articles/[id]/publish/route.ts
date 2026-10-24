@@ -13,9 +13,9 @@ export async function GET(request: Request, { params }: Context) {
     const article = await getArticle((await params).id);
     if (!article) return Response.json({ error: "Article not found", code: "ARTICLE_NOT_FOUND" }, { status: 404 });
     if (!["ready", "publishing"].includes(article.status)) throw new PublishError("Mark the saved article ready after review before publishing.", "ARTICLE_NOT_READY", 409);
-    const { target, existing, image } = await inspectTarget(article);
+    const { target, existing, image, gallery } = await inspectTarget(article);
     const scores = assess(article);
-    return Response.json({ title: article.title, slug: article.slug, status: article.status, qualityScore: scores.qualityScore, seoScore: scores.seoScore, warnings: [...scores.quality, ...scores.seo].filter(x => !x.pass).map(x => x.label), target, image, existing: existing ? { sha: existing.sha } : null, storageSha: article.storageSha, recoveryAvailable: article.status === "publishing" && !!existing && existing.content === serializePublicArticle(article) && (!image || image.sameContent), retryAvailable: article.status === "publishing" && !existing });
+    return Response.json({ title: article.title, slug: article.slug, status: article.status, qualityScore: scores.qualityScore, seoScore: scores.seoScore, warnings: [...scores.quality, ...scores.seo].filter(x => !x.pass).map(x => x.label), target, image, gallery, existing: existing ? { sha: existing.sha } : null, storageSha: article.storageSha, recoveryAvailable: article.status === "publishing" && !!existing && existing.content === serializePublicArticle(article) && (!image || image.sameContent) && gallery.every(item => item.sameContent), retryAvailable: article.status === "publishing" && !existing });
   } catch (error) { return errorResponse(error); }
 }
 export async function POST(request: Request, { params }: Context) {
@@ -43,10 +43,11 @@ export async function POST(request: Request, { params }: Context) {
     }
     if (article.status !== "ready") throw new PublishError("Mark the saved article ready after review before publishing.", "ARTICLE_NOT_READY", 409);
     const issues = publishIssues(article); if (issues.length) throw new PublishError(issues.join("; "), "INVALID_ARTICLE");
-    const { existing, image } = await inspectTarget(article);
+    const { existing, image, gallery } = await inspectTarget(article);
     if (mode === "create" && existing) throw new PublishError("An article with this slug already exists. Review it and confirm an update to continue.", "ARTICLE_ALREADY_EXISTS", 409, existing.sha);
     if (mode === "update" && (!existing || body?.expectedSha !== existing.sha)) throw new PublishError("The public article changed since you opened the confirmation. Refresh before updating.", "ARTICLE_CHANGED", 409, existing?.sha);
     if (image?.replaceRequired && (!body?.replaceImage || body.expectedImageSha !== image.existingSha)) throw new PublishError("A public image with this filename already exists. Confirm replacement before publishing.", "PUBLIC_IMAGE_EXISTS", 409, image.existingSha);
+    if (gallery.some(item => item.replaceRequired)) throw new PublishError("A public photo with this filename already exists. Remove and upload it again.", "PUBLIC_IMAGE_EXISTS", 409);
     const progress = await saveArticle({ ...article, status: "publishing", updatedAt: new Date().toISOString(), publishError: undefined });
     let result;
     try { result = await executePublicCommit(progress, mode, body?.expectedSha, body?.expectedImageSha, body?.replaceImage === true); }

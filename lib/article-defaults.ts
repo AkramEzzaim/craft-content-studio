@@ -21,12 +21,18 @@ export function suggestedImageAlt(article: Pick<Article, "title" | "yarnWeight">
   return project ? `Handmade ${project}${article.yarnWeight.trim() ? ` made with ${article.yarnWeight.trim()} yarn` : ""}` : "";
 }
 export function applyArticleDefaults(article: Article): Article {
+  const keyword = article.primaryKeyword || article.title.trim().toLowerCase();
+  const withKeyword = { ...article, primaryKeyword: keyword };
   return {
-    ...article,
+    ...withKeyword,
     slug: article.slug || suggestedSlug(article.title),
     seoTitle: article.seoTitle || suggestedSeoTitle(article),
     metaDescription: article.metaDescription || suggestedMetaDescription(article),
-    tags: article.tags.length ? article.tags : suggestedTags(article),
+    tags: article.tags.length ? article.tags : suggestedTags(withKeyword),
     imageAlt: article.imageAlt || suggestedImageAlt(article),
+    ogTitle: article.ogTitle || suggestedSeoTitle(article),
+    ogDescription: article.ogDescription || suggestedMetaDescription(article),
+    pinterestTitle: article.pinterestTitle || suggestedSeoTitle(article),
+    pinterestDescription: article.pinterestDescription || suggestedMetaDescription(article),
   };
 }

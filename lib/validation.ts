@@ -1,7 +1,7 @@
 import { accuracyItems, articleTypes, categories, emptyArticle, slugify, type Article } from "./types";
 import { applyArticleDefaults } from "./article-defaults";
 import { generatedMarkdown } from "./article-markdown";
-import { publicImageUrl } from "./image-path";
+import { featuredPatternImagePath, galleryPatternImagePath, imageUrlFromPath, publicImageUrl } from "./image-path";
 const string = (v: unknown, max = 10000) => typeof v === "string" ? v.slice(0, max).trim() : "";
 const list = (v: unknown) => Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 80).map(x => x.slice(0, 500).trim()).filter(Boolean) : [];
 const url = (v: unknown) => { const s = string(v, 2000); return !s || /^https:\/\/[^\s]+$/i.test(s) || /^\/images\/[a-z0-9/_-]+\.(?:png|jpe?g|webp|avif)$/i.test(s) ? s : ""; };
@@ -21,11 +21,22 @@ export function parseArticle(value: unknown, prior?: Article): Article {
     hookSize: string(v.hookSize, 100), gauge: string(v.gauge, 200), dimensions: string(v.dimensions, 200), requiredSkills: list(v.requiredSkills),
     materials: list(v.materials), tools: list(v.tools), abbreviations: list(v.abbreviations), patternNotes: list(v.patternNotes),
     sizing: string(v.sizing, 500), safetyNotes: string(v.safetyNotes, 500), contentMarkdown: string(v.contentMarkdown, 100000),
-    contentMode: mode, introduction: string(v.introduction, 10000),
+    contentMode: mode, introduction: string(v.introduction, 10000), subtitle: string(v.subtitle, 180), aboutOverride: string(v.aboutOverride, 5000),
     instructions: Array.isArray(v.instructions) ? v.instructions.slice(0, 80).map((item: unknown) => ({
       title: string((item as Record<string, unknown>)?.title, 150), instruction: string((item as Record<string, unknown>)?.instruction, 5000),
+      kind: (item as Record<string, unknown>)?.kind === "round" ? "round" as const : "step" as const,
+      stitchCount: string((item as Record<string, unknown>)?.stitchCount, 100), tip: string((item as Record<string, unknown>)?.tip, 1000),
+      imageId: string((item as Record<string, unknown>)?.imageId, 36),
     })).filter(item => item.title || item.instruction) : [],
-    beginnerTips: list(v.beginnerTips), featuredImagePrompt: string(v.featuredImagePrompt, 1000),
+    beginnerTips: list(v.beginnerTips), importantNotes: list(v.importantNotes),
+    abbreviationEntries: Array.isArray(v.abbreviationEntries) ? v.abbreviationEntries.slice(0, 80).map((item: unknown) => ({ short: string((item as Record<string, unknown>)?.short, 40), meaning: string((item as Record<string, unknown>)?.meaning, 200) })).filter(item => item.short || item.meaning) : [],
+    mistakes: Array.isArray(v.mistakes) ? v.mistakes.slice(0, 40).map((item: unknown) => ({ title: string((item as Record<string, unknown>)?.title, 180), explanation: string((item as Record<string, unknown>)?.explanation, 2000), fix: string((item as Record<string, unknown>)?.fix, 2000) })).filter(item => item.title || item.explanation || item.fix) : [],
+    variations: Array.isArray(v.variations) ? v.variations.slice(0, 40).map((item: unknown) => ({ title: string((item as Record<string, unknown>)?.title, 180), text: string((item as Record<string, unknown>)?.text, 3000) })).filter(item => item.title || item.text) : [],
+    relatedSlugs: list(v.relatedSlugs).map(slugify).filter(Boolean), galleryImages: (prior?.galleryImages || []).map(image => {
+      const submitted = Array.isArray(v.galleryImages) ? v.galleryImages.find((item: unknown) => (item as Record<string, unknown>)?.id === image.id) as Record<string, unknown> | undefined : undefined;
+      return { ...image, alt: submitted ? string(submitted.alt, 300) : image.alt, caption: submitted ? string(submitted.caption, 500) : image.caption };
+    }),
+    featuredImagePrompt: string(v.featuredImagePrompt, 1000),
     faq: Array.isArray(v.faq) ? v.faq.slice(0, 30).map((item: unknown) => ({ question: string((item as Record<string, unknown>)?.question, 300), answer: string((item as Record<string, unknown>)?.answer, 2000) })).filter(item => item.question && item.answer) : [],
     featuredImage: url(v.featuredImage), imageAlt: string(v.imageAlt, 300), pinterestImage: url(v.pinterestImage),
     stepImages: Array.isArray(v.stepImages) ? v.stepImages.slice(0, 40).map((item: unknown) => ({ url: url((item as Record<string, unknown>)?.url), alt: string((item as Record<string, unknown>)?.alt, 300), caption: string((item as Record<string, unknown>)?.caption, 300) })).filter(item => item.url) : [],
@@ -43,7 +54,9 @@ export function parseArticle(value: unknown, prior?: Article): Article {
   if (v.status === "archived" && prior) out.status = "archived";
   if (v.status === "ready" && prior) out.status = "ready";
   const withDefaults = applyArticleDefaults(out);
-  if (withDefaults.draftImage) withDefaults.featuredImage = publicImageUrl(withDefaults.slug, withDefaults.draftImage.extension);
+  if (withDefaults.draftImage?.publicPath) withDefaults.draftImage = { ...withDefaults.draftImage, publicPath: featuredPatternImagePath(withDefaults.slug, withDefaults.draftImage.extension) };
+  if (withDefaults.galleryImages?.length) withDefaults.galleryImages = withDefaults.galleryImages.map(image => ({ ...image, publicPath: galleryPatternImagePath(withDefaults.slug, image.id, image.extension) }));
+  if (withDefaults.draftImage) withDefaults.featuredImage = withDefaults.draftImage.publicPath ? imageUrlFromPath(withDefaults.draftImage.publicPath) : publicImageUrl(withDefaults.slug, withDefaults.draftImage.extension);
   if (withDefaults.contentMode === "structured") withDefaults.contentMarkdown = generatedMarkdown(withDefaults);
   return withDefaults;
 }
@@ -62,31 +75,24 @@ function hasEmptySection(body: string) {
   return false;
 }
 export function assess(article: Article) {
-  const body = article.contentMarkdown; const headings = [...body.matchAll(/^#{1,3} (.+)$/gm)].map(m => m[1].toLowerCase()); const words = body.split(/\s+/).filter(Boolean).length;
+  const body = article.contentMarkdown;
   const pattern = article.articleType === "Free Crochet Pattern";
   const seo: Check[] = [
-    { label: "Title and target keyword", pass: !!article.title && !!article.primaryKeyword && article.title.toLowerCase().includes(article.primaryKeyword.toLowerCase()) },
-    { label: "Keyword in introduction", pass: !!article.primaryKeyword && body.slice(0, 700).toLowerCase().includes(article.primaryKeyword.toLowerCase()) },
-    { label: "Meta description is 100–160 characters", pass: article.metaDescription.length >= 100 && article.metaDescription.length <= 160 },
+    { label: "Search title generated", pass: !!article.seoTitle },
+    { label: "Search description generated", pass: !!article.metaDescription },
     { label: "Readable slug", pass: !!article.slug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug) },
-    { label: "No body H1; structured H2 sections", pass: !/^# /m.test(body) && headings.length >= 2 },
-    { label: "Featured image and alt text", pass: !!article.featuredImage && !!article.imageAlt },
-    { label: "Materials and instructions", pass: !pattern || (article.materials.length > 0 && /^## Instructions/m.test(body)) },
-    { label: "Useful FAQ", pass: article.faq.length > 0 || /^## FAQ/m.test(body) },
-    { label: "Internal link", pass: /\]\(\/(?:patterns|crochet)\//.test(body) },
-    { label: "Useful article depth", pass: words >= 300 },
-    { label: "Avoid keyword stuffing", pass: !!article.primaryKeyword && words >= 100 && (body.toLowerCase().split(article.primaryKeyword.toLowerCase()).length - 1) / words < 0.04 },
+    { label: "Featured image description generated", pass: !!article.imageAlt },
   ];
   const quality: Check[] = [
-    { label: "Clear introduction", pass: body.split(/\n\n/)[0]?.split(/\s+/).length >= 25 },
-    { label: "Logical sections", pass: headings.length >= 3 && new Set(headings).size === headings.length },
-    { label: "Instructions are present", pass: !pattern || /^## Instructions/m.test(body) },
-    { label: "Materials are listed", pass: !pattern || article.materials.length > 0 },
-    { label: "Readable paragraphs", pass: words >= 50 && !body.split(/\n\n/).some(p => p.split(/\s+/).length > 180) },
-    { label: "No empty sections", pass: headings.length > 0 && !hasEmptySection(body) },
-    { label: "No placeholder text", pass: !!body && !/\b(?:lorem ipsum|todo|tbd|insert here|placeholder)\b/i.test(body) },
-    { label: "No unsupported testing claim", pass: !!body && !/\b(?:personally tested|tested this pattern|physically tested)\b/i.test(body) },
-    { label: "Crochet accuracy reviewed", pass: !pattern || accuracyItems.every(x => article.accuracyChecks.includes(x)) },
+    { label: "Title provided", pass: !!article.title.trim() },
+    { label: "Introduction provided", pass: !!article.description.trim() },
+    { label: "Featured image provided", pass: !!article.featuredImage },
+    { label: "Materials provided", pass: !pattern || article.materials.length > 0 },
+    { label: "Hook and yarn provided", pass: !pattern || !!article.hookSize && !!(article.yarnType || article.yarnWeight) },
+    { label: "At least one round or step", pass: !pattern || !!article.instructions?.some(step => step.instruction.trim()) || (article.contentMode !== "structured" && /^## Instructions/m.test(body)) },
+    { label: "Crochet instructions reviewed", pass: !pattern || accuracyItems.every(x => article.accuracyChecks.includes(x)) },
+    { label: "No empty sections", pass: !body || !hasEmptySection(body) },
+    { label: "No placeholder text", pass: !/\b(?:lorem ipsum|todo|tbd|insert here|placeholder)\b/i.test(body) },
   ];
   const score = (checks: Check[]) => Math.round(100 * checks.filter(x => x.pass).length / checks.length);
   return { seo, quality, seoScore: score(seo), qualityScore: score(quality) };
@@ -98,10 +104,12 @@ export function publishIssues(a: Article): string[] {
   if (!categories.includes(a.category as "crochet")) issues.push("Category is not supported by the studio");
   if (!/^## Instructions\s*$/im.test(a.contentMarkdown)) issues.push("The public site requires a ## Instructions section");
   if (!/^## Materials\s*$/im.test(a.contentMarkdown) && !a.materials?.length) issues.push("Add at least one material");
+  if (a.articleType === "Free Crochet Pattern" && (!a.hookSize || !(a.yarnType || a.yarnWeight))) issues.push("Add yarn and hook details");
   if (a.canonicalSlug && a.canonicalSlug !== a.slug) issues.push("Canonical slug must match the published article slug");
   if (a.articleType === "Free Crochet Pattern" && !accuracyItems.every(x => a.accuracyChecks?.includes(x))) issues.push("Complete all crochet accuracy checks");
   if (/^# /m.test(a.contentMarkdown)) issues.push("Remove body H1; the public site adds the title H1");
-  if (/!\[[^\]]*\]\([^)]*\)|\[[^\]]+\]\([^)]*\)|^\|/m.test(a.contentMarkdown)) issues.push("The public renderer does not support Markdown links, inline images, or tables yet");
+  const withoutGeneratedImages = a.contentMarkdown.replace(/!\[[^\]\n]*\]\(\/images\/patterns\/[a-z0-9/_-]+\.(?:jpe?g|png|webp)\)/gi, "");
+  if (/!\[[^\]]*\]\([^)]*\)|\[[^\]]+\]\([^)]*\)|^\|/m.test(withoutGeneratedImages)) issues.push("Use uploaded photos; the public renderer does not support custom Markdown links or tables");
   if (/^> |^```|^#{4,6} |^(?:---+|\*\*\*+|___+)\s*$|(?<!\*)\*(?!\*)[^*\n]+\*(?!\*)/m.test(a.contentMarkdown)) issues.push("The public renderer does not support quotes, code blocks, H4+, rules, or italic syntax yet");
   if (a.featuredImage && !/^\/images\/[a-z0-9/_-]+\.(?:png|jpe?g|webp|avif)$/i.test(a.featuredImage)) issues.push("Featured image must point to /images in the public repository");
   if (hasEmptySection(a.contentMarkdown)) issues.push("Remove empty Markdown sections");
@@ -110,7 +118,7 @@ export function publishIssues(a: Article): string[] {
 export function publishingFieldsPresent(a: Article): boolean {
   return !!a.title?.trim() && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug) &&
     !!a.description?.trim() && !!a.difficulty?.trim() && !!a.author?.trim() &&
-    !!a.featuredImage?.trim() && !!a.imageAlt?.trim() && !!a.contentMarkdown?.trim() && (!!a.materials?.length || /^## Materials\s*$/im.test(a.contentMarkdown)) &&
+    !!a.featuredImage?.trim() && !!a.imageAlt?.trim() && !!a.contentMarkdown?.trim() && (a.articleType !== "Free Crochet Pattern" || !!a.hookSize && !!(a.yarnType || a.yarnWeight)) && (!!a.materials?.length || /^## Materials\s*$/im.test(a.contentMarkdown)) &&
     /^## Instructions\s*$/im.test(a.contentMarkdown) && categories.includes(a.category as "crochet");
 }
 export function publishingReadiness(a: Article, configured: boolean): Check[] {
@@ -119,6 +127,7 @@ export function publishingReadiness(a: Article, configured: boolean): Check[] {
     { label: "Slug valid", pass: /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug) },
     { label: "Content and instructions present", pass: !!a.contentMarkdown?.trim() && /^## Instructions\s*$/im.test(a.contentMarkdown) },
     { label: "Materials present", pass: !!a.materials?.length || /^## Materials\s*$/im.test(a.contentMarkdown) },
+    { label: "Yarn and hook present", pass: a.articleType !== "Free Crochet Pattern" || !!a.hookSize && !!(a.yarnType || a.yarnWeight) },
     { label: "Category supported", pass: categories.includes(a.category as "crochet") },
     { label: "Required metadata present", pass: !!a.description && !!a.difficulty && !!a.author && !!a.featuredImage && !!a.imageAlt },
     { label: "Crochet accuracy reviewed", pass: a.articleType !== "Free Crochet Pattern" || accuracyItems.every(x => a.accuracyChecks?.includes(x)) },

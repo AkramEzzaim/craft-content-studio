@@ -19,13 +19,15 @@ export function publicUrl(a: Article) {
 }
 export function serializePublicArticle(a: Article, date = a.updatedAt.slice(0, 10)) {
   const fields: [string, string][] = [
-    ["title", scalar(a.title)], ["slug", scalar(a.slug)], ["description", scalar(a.description)], ["category", scalar(a.category)], ["difficulty", scalar(a.difficulty)],
+    ["title", scalar(a.title)], ["slug", scalar(a.slug)], ["description", scalar(a.description)], ["subtitle", scalar(a.subtitle || "")], ["category", scalar(a.category)], ["difficulty", scalar(a.difficulty)],
     ["estimatedTime", scalar(a.estimatedTime)], ["featuredImage", scalar(a.featuredImage)], ["imageAlt", scalar(a.imageAlt)],
     ["publishedAt", scalar(a.publishedAt?.slice(0, 10) || date)], ["updatedAt", scalar(date)], ["status", scalar("published")],
     ["featured", "false"], ["trending", "false"], ["beginnerFriendly", String(a.difficulty.toLowerCase().includes("beginner"))],
-    ["tags", scalar(a.tags.join(", "))], ["author", scalar(a.author)], ["seoTitle", scalar(a.seoTitle || a.title)],
+    ["tags", scalar(a.tags.join(", "))], ["primaryKeyword", scalar(a.primaryKeyword || a.title.toLowerCase())], ["author", scalar(a.author)], ["seoTitle", scalar(a.seoTitle || a.title)],
     ["metaDescription", scalar(a.metaDescription || a.description)], ["canonicalUrl", scalar(`/patterns/${a.canonicalSlug || a.slug}`)],
-    ["pinterestImage", scalar(a.pinterestImage || a.featuredImage)], ["patternDownloadUrl", scalar(`/patterns/${a.slug}#instructions`)],
+    ["ogTitle", scalar(a.ogTitle || a.seoTitle || a.title)], ["ogDescription", scalar(a.ogDescription || a.metaDescription || a.description)],
+    ["pinterestImage", scalar(a.pinterestImage || a.featuredImage)], ["pinterestTitle", scalar(a.pinterestTitle || a.title)], ["pinterestDescription", scalar(a.pinterestDescription || a.description)], ["patternDownloadUrl", scalar(`/patterns/${a.slug}#instructions`)],
+    ["relatedPatterns", scalar((a.relatedSlugs || []).join(", "))],
   ];
   return `---\n${fields.map(([key, value]) => `${key}: ${value}`).join("\n")}\n---\n${publicBody(a)}`;
 }

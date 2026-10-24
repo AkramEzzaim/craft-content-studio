@@ -18,3 +18,21 @@ export function publicImagePath(slug: string, extension: DraftImage["extension"]
 export function publicImageUrl(slug: string, extension: DraftImage["extension"]) {
   return `/${publicImagePath(slug, extension).slice("public/".length)}`;
 }
+export function featuredPatternImagePath(slug: string, extension: DraftImage["extension"]) {
+  publicImagePath(slug, extension);
+  return `public/images/patterns/${slug}/featured.${extension}`;
+}
+export function galleryPatternImagePath(slug: string, id: string, extension: DraftImage["extension"]) {
+  publicImagePath(slug, extension);
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("Invalid image ID");
+  return `public/images/patterns/${slug}/photo-${id}.${extension}`;
+}
+export function galleryDraftPath(articleId: string, imageId: string, extension: DraftImage["extension"]) {
+  draftImagePath(articleId, extension);
+  if (!/^[0-9a-f-]{36}$/.test(imageId)) throw new Error("Invalid image ID");
+  return `studio/assets/${articleId}/photos/${imageId}.${extension}`;
+}
+export function imageUrlFromPath(path: string) {
+  if (!/^public\/images\/patterns\/[a-z0-9/_-]+\.(jpg|png|webp)$/.test(path)) throw new Error("Invalid public image path");
+  return `/${path.slice("public/".length)}`;
+}
