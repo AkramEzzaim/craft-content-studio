@@ -13,7 +13,8 @@ export function generatedMarkdown(a: Article): string {
   const about = clean(a.aboutOverride || [
     a.title ? `${a.title} is ${difficulty ? `${/^[aeiou]/.test(difficulty) ? "an" : "a"} ${difficulty} crochet project` : "a crochet project"}.` : "",
     a.estimatedTime ? `Set aside about ${a.estimatedTime} to make it.` : "",
-    a.yarnWeight || a.yarnType ? `Use ${[a.yarnWeight, a.yarnType].filter(Boolean).join(" ")} yarn${a.hookSize ? ` with a ${a.hookSize} hook` : ""}.` : a.hookSize ? `Use a ${a.hookSize} hook.` : "",
+    a.yarnWeight || a.yarnType ? `Use ${[a.yarnWeight, a.yarnType].filter(Boolean).join(" ")}${/\byarn\b/i.test([a.yarnWeight, a.yarnType].filter(Boolean).join(" ")) ? "" : " yarn"}${a.hookSize ? ` with a ${a.hookSize} hook` : ""}.` : a.hookSize ? `Use a ${a.hookSize} hook.` : "",
+    a.dimensions ? `The finished size is ${a.dimensions}.` : "",
     a.instructions?.length ? `The pattern has ${a.instructions.length} ${a.instructions.every(step => step.kind === "round") ? "rounds" : "steps"}.` : "",
   ].filter(Boolean).join(" "));
   if (about) sections.push(section("About This Pattern", about));
@@ -23,12 +24,15 @@ export function generatedMarkdown(a: Article): string {
   if (a.tools.length) sections.push(section("Tools", bullets(a.tools)));
   const abbreviations = a.abbreviationEntries?.length ? a.abbreviationEntries.filter(item => item.short.trim() && item.meaning.trim()).map(item => `**${oneLine(item.short)}** — ${oneLine(item.meaning)}`) : a.abbreviations.map(oneLine).filter(Boolean);
   if (abbreviations.length) sections.push(section("Abbreviations", bullets(abbreviations)));
-  const steps = (a.instructions || []).filter(step => clean(step.instruction));
+  const steps = (a.instructions || []).filter(step => clean(step.pattern || step.explanation || step.instruction));
   if (steps.length) sections.push(section("Instructions", steps.map((step, index) => {
-    const kind = step.kind === "round" ? "Round" : "Step";
+    const kind = step.kind ? (step.kind === "round" ? "Round" : "Step") : a.instructionMode === "rounds" ? "Round" : "Step";
     const title = oneLine(step.title).replace(/^(?:Step|Round)\s+\d+\s*[—:-]?\s*/i, "");
     const photo = (a.galleryImages || []).find(image => image.id === step.imageId && image.publicPath);
-    return `### ${kind} ${index + 1}${title ? ` — ${title}` : ""}\n${clean(step.instruction)}${step.stitchCount?.trim() ? `\n\n**Stitch count:** ${oneLine(step.stitchCount)}` : ""}${step.tip?.trim() ? `\n\n**Tip:** ${clean(step.tip)}` : ""}${photo ? `\n\n![${oneLine(photo.alt || a.title)}](${imageUrlFromPath(photo.publicPath!)})${photo.caption.trim() ? `\n${oneLine(photo.caption)}` : ""}` : ""}`;
+    const pattern = clean(step.pattern || "");
+    const explanation = clean(step.explanation || step.instruction || "");
+    const directions = [pattern && `**Pattern:** ${pattern}`, explanation && (pattern ? `**Step-by-step:** ${explanation}` : explanation)].filter(Boolean).join("\n\n");
+    return `### ${kind} ${index + 1}${title ? ` — ${title}` : ""}\n${directions}${step.stitchCount?.trim() ? `\n\n**Stitch count:** ${oneLine(step.stitchCount)}` : ""}${step.tip?.trim() ? `\n\n**Tip:** ${clean(step.tip)}` : ""}${photo ? `\n\n![${oneLine(photo.alt || a.title)}](${imageUrlFromPath(photo.publicPath!)})${photo.caption.trim() ? `\n${oneLine(photo.caption)}` : ""}` : ""}`;
   }).join("\n\n")));
   if (a.importantNotes?.length) sections.push(section("Important Notes", bullets(a.importantNotes)));
   if (a.beginnerTips?.length) sections.push(section("Beginner Tips", bullets(a.beginnerTips)));

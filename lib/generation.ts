@@ -8,8 +8,8 @@ const strings = (v: unknown) => Array.isArray(v) ? v.filter((x): x is string => 
 export async function generateArticle(input: Record<string, unknown>): Promise<Article> {
   const endpoint = process.env.N8N_CONTENT_WEBHOOK_URL;
   if (!endpoint || !endpoint.startsWith("https://")) throw new Error("N8N_CONTENT_WEBHOOK_URL must be an HTTPS URL");
-  const topic = str(input.topic, 200), primary = str(input.primaryKeyword, 150);
-  if (!topic || !primary) throw new Error("Topic and primary keyword are required");
+  const topic = str(input.topic, 200), primary = str(input.primaryKeyword, 150) || topic.toLowerCase();
+  if (!topic) throw new Error("Topic is required");
   const response = await fetch(endpoint, { method: "POST", cache: "no-store", signal: AbortSignal.timeout(90000), headers: { "Content-Type": "application/json", ...(process.env.N8N_CONTENT_WEBHOOK_SECRET ? { "X-Webhook-Secret": process.env.N8N_CONTENT_WEBHOOK_SECRET } : {}) }, body: JSON.stringify({ topic, primary_keyword: primary, secondary_keywords: strings(input.secondaryKeywords), article_type: str(input.articleType, 80), category: "crochet", difficulty: str(input.difficulty, 80), audience: str(input.audience, 200), special_instructions: str(input.specialInstructions, 2000), system_prompt: generationPrompt }) });
   if (!response.ok) throw new Error(`Generation webhook returned ${response.status}`);
   const raw: unknown = await response.json();
