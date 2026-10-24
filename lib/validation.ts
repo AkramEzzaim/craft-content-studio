@@ -4,7 +4,7 @@ import { generatedMarkdown } from "./article-markdown";
 import { featuredPatternImagePath, galleryPatternImagePath, imageUrlFromPath, publicImageUrl } from "./image-path";
 const string = (v: unknown, max = 10000) => typeof v === "string" ? v.slice(0, max).trim() : "";
 const list = (v: unknown) => Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 80).map(x => x.slice(0, 500).trim()).filter(Boolean) : [];
-const oldChecks: Record<string, string> = { "Materials reviewed": "Materials checked", "Hook/yarn combination reviewed": "Hook/yarn checked", "Abbreviations reviewed": "Abbreviations checked", "Rounds reviewed": "Rounds/steps checked", "Round transitions reviewed": "Rounds/steps checked", "Stitch counts reviewed": "Stitch counts checked where applicable", "Increase/decrease logic reviewed": "Increase/decrease logic checked where applicable", "Pattern reviewed": "Instructions reviewed", "Instructions tested or verified": "Instructions reviewed" };
+const oldChecks: Record<string, string> = { "Materials reviewed": "Materials checked", "Hook/yarn combination reviewed": "Hook/yarn checked", "Abbreviations reviewed": "Abbreviations checked", "Rounds reviewed": "Rounds/steps checked", "Round transitions reviewed": "Rounds/steps checked", "Stitch counts reviewed": "Stitch counts checked where applicable", "Pattern reviewed": "Instructions reviewed", "Instructions tested or verified": "Instructions reviewed" };
 const url = (v: unknown) => { const s = string(v, 2000); return !s || /^https:\/\/[^\s]+$/i.test(s) || /^\/images\/[a-z0-9/_-]+\.(?:png|jpe?g|webp|avif)$/i.test(s) ? s : ""; };
 export function parseArticle(value: unknown, prior?: Article): Article {
   if (!value || typeof value !== "object") throw new Error("Invalid article data");
@@ -23,13 +23,18 @@ export function parseArticle(value: unknown, prior?: Article): Article {
     materials: list(v.materials), tools: list(v.tools), abbreviations: list(v.abbreviations), patternNotes: list(v.patternNotes),
     sizing: string(v.sizing, 500), safetyNotes: string(v.safetyNotes, 500), contentMarkdown: string(v.contentMarkdown, 100000),
     contentMode: mode, instructionMode: v.instructionMode === "steps" ? "steps" : v.instructionMode === "rounds" ? "rounds" : Array.isArray(v.instructions) && v.instructions.length ? v.instructions.some((item: unknown) => (item as Record<string, unknown>)?.kind === "round") ? "rounds" : "steps" : base.instructionMode || "rounds", physicallyTested: v.physicallyTested === true,
+    rawSource: string(v.rawSource, 150000), parseFingerprint: string(v.parseFingerprint, 40), parseWarnings: list(v.parseWarnings).slice(0, 40), finishing: string(v.finishing, 10000), suggestedPhotos: list(v.suggestedPhotos).slice(0, 30),
+    noteEntries: Array.isArray(v.noteEntries) ? v.noteEntries.slice(0, 80).map((item: unknown) => ({ title: string((item as Record<string, unknown>)?.title, 180), body: string((item as Record<string, unknown>)?.body, 2000) })).filter(item => item.title || item.body) : [],
+    unparsedSections: Array.isArray(v.unparsedSections) ? v.unparsedSections.slice(0, 40).map((item: unknown) => ({ heading: string((item as Record<string, unknown>)?.heading, 180), body: string((item as Record<string, unknown>)?.body, 10000) })).filter(item => item.heading || item.body) : [],
+    otherSections: Array.isArray(v.otherSections) ? v.otherSections.slice(0, 40).map((item: unknown) => ({ heading: string((item as Record<string, unknown>)?.heading, 180), body: string((item as Record<string, unknown>)?.body, 10000) })).filter(item => item.heading || item.body) : [],
     introduction: string(v.introduction, 10000), subtitle: string(v.subtitle, 180), aboutOverride: string(v.aboutOverride, 5000),
     instructions: Array.isArray(v.instructions) ? v.instructions.slice(0, 80).map((item: unknown) => ({
       title: string((item as Record<string, unknown>)?.title, 150), instruction: string((item as Record<string, unknown>)?.instruction, 5000),
       pattern: string((item as Record<string, unknown>)?.pattern, 5000), explanation: string((item as Record<string, unknown>)?.explanation, 5000),
-      kind: (item as Record<string, unknown>)?.kind === "round" ? "round" as const : "step" as const,
+      kind: (item as Record<string, unknown>)?.kind === "round" ? "round" as const : (item as Record<string, unknown>)?.kind === "row" ? "row" as const : "step" as const,
       stitchCount: string((item as Record<string, unknown>)?.stitchCount, 100), tip: string((item as Record<string, unknown>)?.tip, 1000),
       imageId: string((item as Record<string, unknown>)?.imageId, 36),
+      imageDescription: string((item as Record<string, unknown>)?.imageDescription, 300),
     })).filter(item => item.title || item.instruction || item.pattern || item.explanation) : [],
     beginnerTips: list(v.beginnerTips), importantNotes: list(v.importantNotes),
     abbreviationEntries: Array.isArray(v.abbreviationEntries) ? v.abbreviationEntries.slice(0, 80).map((item: unknown) => ({ short: string((item as Record<string, unknown>)?.short, 40), meaning: string((item as Record<string, unknown>)?.meaning, 200) })).filter(item => item.short || item.meaning) : [],
@@ -62,9 +67,9 @@ export function parseArticle(value: unknown, prior?: Article): Article {
   if (v.status === "archived" && prior) out.status = "archived";
   if (v.status === "ready" && prior) out.status = "ready";
   const withDefaults = applyArticleDefaults(out);
-  if (withDefaults.draftImage?.publicPath) withDefaults.draftImage = { ...withDefaults.draftImage, publicPath: featuredPatternImagePath(withDefaults.slug, withDefaults.draftImage.extension) };
-  if (withDefaults.galleryImages?.length) withDefaults.galleryImages = withDefaults.galleryImages.map(image => ({ ...image, publicPath: galleryPatternImagePath(withDefaults.slug, image.id, image.extension) }));
-  if (withDefaults.draftImage) withDefaults.featuredImage = withDefaults.draftImage.publicPath ? imageUrlFromPath(withDefaults.draftImage.publicPath) : publicImageUrl(withDefaults.slug, withDefaults.draftImage.extension);
+  if (withDefaults.draftImage && withDefaults.slug) withDefaults.draftImage = { ...withDefaults.draftImage, publicPath: featuredPatternImagePath(withDefaults.slug, withDefaults.draftImage.extension) };
+  if (withDefaults.galleryImages?.length && withDefaults.slug) withDefaults.galleryImages = withDefaults.galleryImages.map(image => ({ ...image, publicPath: galleryPatternImagePath(withDefaults.slug, image.id, image.extension) }));
+  if (withDefaults.draftImage && withDefaults.slug) withDefaults.featuredImage = withDefaults.draftImage.publicPath ? imageUrlFromPath(withDefaults.draftImage.publicPath) : publicImageUrl(withDefaults.slug, withDefaults.draftImage.extension);
   if (withDefaults.contentMode === "structured") withDefaults.contentMarkdown = generatedMarkdown(withDefaults);
   return withDefaults;
 }
@@ -107,6 +112,7 @@ export function assess(article: Article) {
 }
 export function publishIssues(a: Article): string[] {
   const issues: string[] = [];
+  if (a.contentMode === "structured" && a.unparsedSections?.length) issues.push("Assign every unparsed section before publishing");
   for (const [label, value] of [["Title", a.title], ["Slug", a.slug], ["Description", a.description], ["Author", a.author], ["Difficulty", a.difficulty], ["Featured image", a.featuredImage], ["Featured image alt text", a.imageAlt], ["Content", a.contentMarkdown]]) if (!value) issues.push(`${label} is required`);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug)) issues.push("Slug must use lowercase words separated by hyphens");
   if (!categories.includes(a.category as "crochet")) issues.push("Category is not supported by the studio");

@@ -26,15 +26,17 @@ export function generatedMarkdown(a: Article): string {
   if (abbreviations.length) sections.push(section("Abbreviations", bullets(abbreviations)));
   const steps = (a.instructions || []).filter(step => clean(step.pattern || step.explanation || step.instruction));
   if (steps.length) sections.push(section("Instructions", steps.map((step, index) => {
-    const kind = step.kind ? (step.kind === "round" ? "Round" : "Step") : a.instructionMode === "rounds" ? "Round" : "Step";
-    const title = oneLine(step.title).replace(/^(?:Step|Round)\s+\d+\s*[—:-]?\s*/i, "");
+    const kind = step.kind ? (step.kind === "round" ? "Round" : step.kind === "row" ? "Row" : "Step") : a.instructionMode === "rounds" ? "Round" : "Step";
+    const title = oneLine(step.title).replace(/^(?:Step|Round|Row)\s+\d+\s*[—:-]?\s*/i, "");
     const photo = (a.galleryImages || []).find(image => image.id === step.imageId && image.publicPath);
     const pattern = clean(step.pattern || "");
     const explanation = clean(step.explanation || step.instruction || "");
     const directions = [pattern && `**Pattern:** ${pattern}`, explanation && (pattern ? `**Step-by-step:** ${explanation}` : explanation)].filter(Boolean).join("\n\n");
-    return `### ${kind} ${index + 1}${title ? ` — ${title}` : ""}\n${directions}${step.stitchCount?.trim() ? `\n\n**Stitch count:** ${oneLine(step.stitchCount)}` : ""}${step.tip?.trim() ? `\n\n**Tip:** ${clean(step.tip)}` : ""}${photo ? `\n\n![${oneLine(photo.alt || a.title)}](${imageUrlFromPath(photo.publicPath!)})${photo.caption.trim() ? `\n${oneLine(photo.caption)}` : ""}` : ""}`;
+    return `### ${kind} ${index + 1}${title ? ` — ${title}` : ""}\n${directions}${step.stitchCount?.trim() ? `\n\n**Stitch count:** ${oneLine(step.stitchCount)}` : ""}${step.tip?.trim() ? `\n\n**Tip:** ${clean(step.tip)}` : ""}${photo ? `\n\n![${oneLine(step.imageDescription || photo.alt || a.title)}](${imageUrlFromPath(photo.publicPath!)})${photo.caption.trim() ? `\n${oneLine(photo.caption)}` : ""}` : ""}`;
   }).join("\n\n")));
-  if (a.importantNotes?.length) sections.push(section("Important Notes", bullets(a.importantNotes)));
+  if (a.finishing?.trim()) sections.push(section("Finishing", clean(a.finishing)));
+  if (a.noteEntries?.length) sections.push(section("Important Notes", a.noteEntries.map(item => `- ${item.title ? `**${oneLine(item.title)}**` : ""}${item.title && item.body ? " — " : ""}${oneLine(item.body)}`).join("\n")));
+  else if (a.importantNotes?.length) sections.push(section("Important Notes", bullets(a.importantNotes)));
   if (a.beginnerTips?.length) sections.push(section("Beginner Tips", bullets(a.beginnerTips)));
   const variations = (a.variations || []).filter(item => item.title.trim() && item.text.trim());
   if (variations.length) sections.push(section("Variations", variations.map(item => `### ${oneLine(item.title)}\n${clean(item.text)}`).join("\n\n")));
@@ -45,6 +47,7 @@ export function generatedMarkdown(a: Article): string {
   const assigned = new Set((a.instructions || []).map(step => step.imageId).filter(Boolean));
   const gallery = (a.galleryImages || []).filter(image => image.publicPath && !assigned.has(image.id));
   if (gallery.length) sections.push(section("More Photos", gallery.map(image => `![${oneLine(image.alt || a.title)}](${imageUrlFromPath(image.publicPath!)})${image.caption.trim() ? `\n${oneLine(image.caption)}` : ""}`).join("\n\n")));
+  if (a.otherSections?.length) sections.push(section("Additional Details", a.otherSections.map(item => `### ${oneLine(item.heading)}\n${clean(item.body)}`).join("\n\n")));
   return sections.filter(Boolean).join("\n\n").trim();
 }
 export function articleMarkdown(a: Article): string { return a.contentMode === "structured" ? generatedMarkdown(a) : a.contentMarkdown; }

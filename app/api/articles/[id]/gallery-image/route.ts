@@ -37,7 +37,7 @@ export async function POST(request: Request, { params }: Context) {
     const checked = validateImage(bytes, file.name, file.type);
     const imageId = crypto.randomUUID();
     const path = galleryDraftPath(article.id, imageId, checked.extension);
-    const publicPath = galleryPatternImagePath(article.slug, imageId, checked.extension);
+    const publicPath = article.slug ? galleryPatternImagePath(article.slug, imageId, checked.extension) : undefined;
     const repo = studioRepo(); await assertPrivateRepo(repo);
     await putBinaryFileWithCommit(repo, path, bytes, `studio: add photo ${imageId}`);
     const originalName = file.name.split(/[\\/]/).pop()?.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 180) || `photo.${checked.extension}`;

@@ -34,8 +34,8 @@ export async function POST(request: Request, { params }: Context) {
     if (file.size > MAX_IMAGE_BYTES) throw new Error("Image must be 4 MB or smaller");
     const bytes = Buffer.from(await file.arrayBuffer());
     const validated = validateImage(bytes, file.name, file.type);
-    const publicPath = featuredPatternImagePath(article.slug, validated.extension);
-    const featuredImage = imageUrlFromPath(publicPath);
+    const publicPath = article.slug ? featuredPatternImagePath(article.slug, validated.extension) : undefined;
+    const featuredImage = publicPath ? imageUrlFromPath(publicPath) : "";
     const path = draftImagePath(article.id, validated.extension);
     const repo = studioRepo(); await assertPrivateRepo(repo);
     const existing = await getBinaryFile(repo, path);

@@ -12,7 +12,8 @@
     "check:compatibility": "node scripts/check-compatibility.mjs",
     "check:publishing": "node scripts/check-publishing.mjs",
     "check:images": "node scripts/check-images.mjs",
-    "check:builder": "node scripts/check-builder.mjs"
+    "check:builder": "node scripts/check-builder.mjs",
+    "check:parser": "node scripts/check-parser.mjs"
   },
   "dependencies": {
     "next": "16.4.2",
