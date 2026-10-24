@@ -11,7 +11,8 @@ function load(file, imports = {}) {
 }
 const types = load("lib/types.ts");
 const validation = load("lib/validation.ts", { "./types": types });
-const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": { safePath: x => x }, "./validation": validation });
+const body = load("lib/public-body.ts");
+const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": { safePath: x => x }, "./validation": validation, "./public-body": body });
 const article = types.emptyArticle();
 Object.assign(article, { title: "Easy Crochet Flower Pattern", slug: "easy-crochet-flower", primaryKeyword: "easy crochet flower", description: "Create a small five petal flower with simple stitches.", author: "Hearth & Thread Studio", featuredImage: "/images/patterns/easy-crochet-flower.png", imageAlt: "Pink crocheted flower", seoTitle: "Easy Crochet Flower Pattern", metaDescription: "Learn to make a crochet flower with clear materials, beginner friendly steps, and a simple finish. This quick project uses basic stitches and cotton yarn.", materials: ["Cotton yarn"], tools: ["3.5 mm hook"], accuracyChecks: [...types.accuracyItems], contentMarkdown: `An easy crochet flower is a small project for learning to work in the round. Follow each instruction slowly and count the stitches after every step. This guide uses US crochet terms and explains the simple finish.\n\n## Materials\n- Cotton yarn\n\n## Tools\n- 3.5 mm hook\n\n## Instructions\n### Make the center\n${"Work a stitch carefully and count it before continuing. ".repeat(55)}\n\n## Tips\n- Keep the tension even.\n\n## FAQ\n### Can I change the yarn?\nYes, but the finished size will change.` });
 assert.deepEqual(validation.publishIssues(article), []);
@@ -26,4 +27,5 @@ assert.match(match[2], /## Instructions/);
 assert.ok(fs.existsSync(path.join("../craft/public", fields.featuredImage.slice(1))), "image exists in inspected public repo");
 assert.ok(validation.publishIssues({ ...article, accuracyChecks: [] }).some(x => x.includes("accuracy")));
 assert.ok(validation.publishIssues({ ...article, contentMarkdown: article.contentMarkdown + "\n[link](/patterns/example)" }).some(x => x.includes("renderer")));
+assert.equal((body.publicBody({ ...article, contentMarkdown: article.contentMarkdown.replace("## Materials\n- Cotton yarn\n\n", "") }).match(/## Materials/g) || []).length, 1, "metadata materials are inserted once");
 console.log("Public Markdown schema and publishing gates verified.");

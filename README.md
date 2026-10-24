@@ -31,7 +31,19 @@ No database or Vercel filesystem persistence is required. Private drafts are JSO
 
 Create or generate a draft, edit it, complete crochet accuracy checks, inspect the preview, mark it ready, then explicitly publish. Generated content is always saved as `generated` and requires review. Publishing validates the article, checks that the image exists, checks whether the target article exists or changed, and creates or updates one `.md` file through the GitHub API. The resulting GitHub commit triggers the public site's normal Vercel deployment. Deployment success is separate from commit success; the studio reports the commit and the public URL, while the live site may take a short time to update.
 
-Existing files are never overwritten unless the studio has a matching `publishedSha` from a previous successful publish. A slug change after publication requires manual migration. If publishing commits but the subsequent private draft status save fails, retry Publish: the studio compares the committed file with its saved publishing revision and reconciles the status without creating another commit.
+In the editor’s Review tab, save the article and mark it ready. **PUBLISH TO HEARTH & THREAD** opens a confirmation with the repository, branch, file path, expected URL, quality score, and SEO score. If the public file already exists, the studio requires a separate **Update existing article** action followed by **Confirm Update**. Updates use the current GitHub file SHA and reject changes made after the confirmation opened. A slug change after publication requires manual migration. If GitHub commits but the subsequent private draft status save fails, **Check publishing outcome** compares the public file with the saved publishing revision and reconciles the status without another commit.
+
+To test one article safely:
+
+1. In Settings, check that the craft repository, token, branch, content path, and public site are configured. Confirm the configured branch is the public site’s deployment branch.
+2. Add a featured image under `public/images/` in the craft repository first, then use its `/images/...` path in the Studio article.
+3. Create or open a draft with a unique slug, required metadata, and a populated `## Instructions` section. Review the pattern instructions and complete the crochet accuracy checklist.
+4. Save the draft, open Review, and choose **Mark ready**. Check the publishing readiness list; SEO suggestions may remain.
+5. Choose **PUBLISH TO HEARTH & THREAD**. Verify the title, slug, repository, branch, `content/patterns/{slug}.md` destination, and expected URL in the confirmation. **Cancel** here makes no public change.
+6. Choose **Confirm Publish** once. Copy the commit SHA from the success screen, open the GitHub commit, and verify the new Markdown file. The expected public URL may become available after Vercel finishes its normal build.
+7. To test duplicate protection, return the same article to ready status and reopen the confirmation. The existing file should be reported. **Cancel** leaves it intact; updating requires **Update existing article** and a second **Confirm Update** click.
+
+Local checks: `npm run check:compatibility`, `npm run check:publishing`, `npm run typecheck`, `npm run lint`, and `npm run build`.
 
 ## n8n contract
 

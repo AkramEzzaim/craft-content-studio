@@ -1,6 +1,9 @@
 import { GithubError } from "./github";
+import { PublishError } from "./publishing";
 export function errorResponse(error: unknown) {
+  if (error instanceof PublishError) return Response.json({ error: error.message, code: error.code, ...(error.existingSha ? { existingSha: error.existingSha } : {}) }, { status: error.status });
+  if (error instanceof GithubError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
   const message = error instanceof Error ? error.message : "Unexpected server error";
-  const status = error instanceof GithubError && error.status === 409 ? 409 : message.includes("not configured") ? 503 : 400;
+  const status = /not configured|incomplete/i.test(message) ? 503 : /Invalid|must/i.test(message) ? 400 : 502;
   return Response.json({ error: message }, { status });
 }

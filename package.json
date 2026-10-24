@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "hash-password": "node scripts/hash-password.mjs",
-    "check:compatibility": "node scripts/check-compatibility.mjs"
+    "check:compatibility": "node scripts/check-compatibility.mjs",
+    "check:publishing": "node scripts/check-publishing.mjs"
   },
   "dependencies": {
     "next": "16.4.2",

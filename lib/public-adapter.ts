@@ -1,30 +1,55 @@
 import "server-only";
-import { craftRepo, fileExists, getFile, putFile, safePath } from "./github";
+import { craftRepo, fileExists, getFile, putFileWithCommit, safePath, verifyRepositoryBranch, type GithubFile, type GithubWrite } from "./github";
 import { publishIssues } from "./validation";
 import type { Article } from "./types";
-const quote = (value: string) => JSON.stringify(value.replace(/[\r\n]+/g, " ").replace(/"/g, "”"));
-export function publicPath(article: Article) { return `${safePath(process.env.CRAFT_CONTENT_PATH || "content/patterns")}/${article.slug}.md`; }
+import { publicBody } from "./public-body";
+
+// The public site's parser only strips matching outer quotes; it does not parse YAML escapes.
+const scalar = (value: string) => `"${value.replace(/[\r\n]+/g, " ").replace(/"/g, "”").replace(/\\/g, "/")}"`;
+export function publicPath(a: Article) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug)) throw new Error("Invalid article slug");
+  const root = safePath(process.env.CRAFT_CONTENT_PATH || "");
+  return safePath(`${root}/${a.slug}.md`);
+}
+export function publicUrl(a: Article) {
+  const base = process.env.CRAFT_SITE_URL;
+  if (!base) throw new Error("Public site URL is not configured");
+  const parsed = new URL(base);
+  if (parsed.protocol !== "https:") throw new Error("Public site URL must use HTTPS");
+  return `${parsed.origin}/patterns/${a.slug}`;
+}
 export function serializePublicArticle(a: Article, date = a.updatedAt.slice(0, 10)) {
   const fields: [string, string][] = [
-    ["title", quote(a.title)], ["slug", quote(a.slug)], ["description", quote(a.description)], ["category", quote(a.category)], ["difficulty", quote(a.difficulty)], ["estimatedTime", quote(a.estimatedTime)], ["featuredImage", quote(a.featuredImage)], ["imageAlt", quote(a.imageAlt)], ["publishedAt", quote(a.publishedAt?.slice(0, 10) || date)], ["updatedAt", quote(date)], ["status", quote("published")], ["featured", "false"], ["trending", "false"], ["beginnerFriendly", String(a.difficulty.toLowerCase().includes("beginner"))], ["tags", quote(a.tags.join(", "))], ["author", quote(a.author)], ["seoTitle", quote(a.seoTitle || a.title)], ["metaDescription", quote(a.metaDescription || a.description)], ["canonicalUrl", quote(`/patterns/${a.canonicalSlug || a.slug}`)], ["pinterestImage", quote(a.pinterestImage || a.featuredImage)], ["patternDownloadUrl", quote(`/patterns/${a.slug}#instructions`)]];
-  const faq = a.faq.length && !/^## FAQ/m.test(a.contentMarkdown) ? `\n\n## FAQ\n${a.faq.map(x => `### ${x.question}\n${x.answer}`).join("\n\n")}` : "";
-  return `---\n${fields.map(([key, val]) => `${key}: ${val}`).join("\n")}\n---\n${a.contentMarkdown.trim()}${faq}\n`;
+    ["title", scalar(a.title)], ["slug", scalar(a.slug)], ["description", scalar(a.description)], ["category", scalar(a.category)], ["difficulty", scalar(a.difficulty)],
+    ["estimatedTime", scalar(a.estimatedTime)], ["featuredImage", scalar(a.featuredImage)], ["imageAlt", scalar(a.imageAlt)],
+    ["publishedAt", scalar(a.publishedAt?.slice(0, 10) || date)], ["updatedAt", scalar(date)], ["status", scalar("published")],
+    ["featured", "false"], ["trending", "false"], ["beginnerFriendly", String(a.difficulty.toLowerCase().includes("beginner"))],
+    ["tags", scalar(a.tags.join(", "))], ["author", scalar(a.author)], ["seoTitle", scalar(a.seoTitle || a.title)],
+    ["metaDescription", scalar(a.metaDescription || a.description)], ["canonicalUrl", scalar(`/patterns/${a.canonicalSlug || a.slug}`)],
+    ["pinterestImage", scalar(a.pinterestImage || a.featuredImage)], ["patternDownloadUrl", scalar(`/patterns/${a.slug}#instructions`)],
+  ];
+  return `---\n${fields.map(([key, value]) => `${key}: ${value}`).join("\n")}\n---\n${publicBody(a)}`;
 }
-export async function publishToCraft(a: Article): Promise<{ sha: string; path: string; url: string }> {
-  const issues = publishIssues(a); if (issues.length) throw new Error(issues.join("; "));
-  const repo = craftRepo(); const path = publicPath(a);
-  if (a.publishedPath && a.publishedPath !== path) throw new Error("Published slug changed. Restore the original slug before updating; manual migration is required.");
-  const imagePath = a.featuredImage.replace(/^\//, "");
-  if (!imagePath.startsWith("images/") || !(await fileExists(repo, `public/${imagePath}`))) throw new Error("Featured image must exist under public/images in the craft repository");
-  if (a.pinterestImage?.startsWith("/") && !(await fileExists(repo, `public/${a.pinterestImage.replace(/^\//, "")}`))) throw new Error("Pinterest image must exist in the craft repository");
-  const existing = await getFile(repo, path);
-  if (existing && a.status === "publishing" && !a.publishedSha && existing.content === serializePublicArticle(a)) {
-    const base = (process.env.CRAFT_SITE_URL || "https://craft-iota-wheat.vercel.app").replace(/\/$/, "");
-    return { sha: existing.sha, path, url: `${base}/patterns/${a.slug}` };
+export function publicTarget(a: Article) {
+  const repo = craftRepo();
+  return { repository: `${repo.owner}/${repo.name}`, branch: repo.branch, path: publicPath(a), url: publicUrl(a), filename: `${a.slug}.md` };
+}
+export async function inspectPublicArticle(a: Article): Promise<GithubFile | null> {
+  const repo = craftRepo();
+  await verifyRepositoryBranch(repo);
+  return getFile(repo, publicPath(a));
+}
+export async function validatePublicAssets(a: Article) {
+  const repo = craftRepo();
+  const paths = [a.featuredImage, a.pinterestImage].filter(Boolean);
+  for (const image of paths) {
+    if (!/^\/images\/[a-z0-9/_-]+\.(?:png|jpe?g|webp|avif)$/i.test(image)) throw new Error("Public images must use a path under /images in the craft repository");
+    if (!(await fileExists(repo, `public/${image.slice(1)}`))) throw new Error(`Image does not exist in the craft repository: ${image}`);
   }
-  if (existing && (!a.publishedSha || a.publishedSha !== existing.sha)) throw new Error("This article path already exists or changed externally. Review the public repository before publishing.");
-  if (!existing && a.publishedSha) throw new Error("The previously published article is missing from the public repository");
-  const sha = await putFile(repo, path, serializePublicArticle(a), `content: publish ${a.slug}`, existing?.sha);
-  const base = (process.env.CRAFT_SITE_URL || "https://craft-iota-wheat.vercel.app").replace(/\/$/, "");
-  return { sha, path, url: `${base}/patterns/${a.slug}` };
+}
+export async function writePublicArticle(a: Article, mode: "create" | "update", existingSha?: string): Promise<GithubWrite> {
+  const issues = publishIssues({ ...a, contentMarkdown: publicBody(a) });
+  if (issues.length) throw new Error(issues.join("; "));
+  const repo = craftRepo();
+  return putFileWithCommit(repo, publicPath(a), serializePublicArticle(a), `content: ${mode === "create" ? "publish" : "update"} ${a.slug}`, existingSha);
 }

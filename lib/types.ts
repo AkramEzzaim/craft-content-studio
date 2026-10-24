@@ -10,7 +10,7 @@ export type Article = {
   yarnType: string; yarnWeight: string; hookSize: string; gauge: string; dimensions: string; requiredSkills: string[]; materials: string[]; tools: string[]; abbreviations: string[]; patternNotes: string[]; sizing: string; safetyNotes: string;
   contentMarkdown: string; featuredImagePrompt: string; faq: Faq[]; featuredImage: string; imageAlt: string; pinterestImage: string; stepImages: StepImage[];
   seoTitle: string; metaDescription: string; canonicalSlug: string; tags: string[]; ogTitle: string; ogDescription: string; pinterestTitle: string; pinterestDescription: string;
-  accuracyChecks: string[]; status: Status; aiGenerated: boolean; createdAt: string; updatedAt: string; publishedAt?: string; publicUrl?: string; publishedSha?: string; publishedPath?: string; publishError?: string; storageSha?: string;
+  accuracyChecks: string[]; status: Status; aiGenerated: boolean; createdAt: string; updatedAt: string; publishedAt?: string; publicUrl?: string; publishedSha?: string; publishedPath?: string; githubCommitSha?: string; githubPath?: string; githubRepository?: string; publishError?: string; storageSha?: string;
 };
 export function emptyArticle(): Article {
   const now = new Date().toISOString();
