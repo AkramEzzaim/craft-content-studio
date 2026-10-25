@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import ts from "typescript";
 import PDFDocument from "pdfkit";
 import sharp from "sharp";
@@ -18,7 +19,7 @@ const types = load("lib/types.ts");
 const imagePaths = load("lib/image-path.ts");
 const markdown = load("lib/article-markdown.ts", { "./image-path": imagePaths });
 const body = load("lib/public-body.ts");
-const pdf = load("lib/pattern-pdf.ts", { "server-only": {}, pdfkit: PDFDocument, sharp, "./public-body": body });
+const pdf = load("lib/pattern-pdf.ts", { "server-only": {}, pdfkit: PDFDocument, sharp, "node:fs": fs, "node:path": path, "./public-body": body });
 const id = "11111111-1111-4111-8111-111111111111";
 const article = {
   ...types.emptyArticle(), id, slug: "easy-crochet-frog", title: "Easy Crochet Frog",
@@ -43,6 +44,9 @@ const result = await pdf.generatePatternPdf(article, async path => path.startsWi
 assert.ok(result.length > 2500);
 assert.equal(result.subarray(0, 5).toString(), "%PDF-");
 assert.match(result.subarray(-24).toString("latin1"), /%%EOF/);
+assert.match(result.toString("latin1"), /NotoSans-Regular/);
+assert.match(result.toString("latin1"), /NotoSans-Bold/);
+assert.doesNotMatch(result.toString("latin1"), /Helvetica/);
 if (process.env.PDF_OUTPUT_PATH) fs.writeFileSync(process.env.PDF_OUTPUT_PATH, result);
 const revised = { ...article, title: "Easy Crochet Frog - Revised", updatedAt: "2026-10-25T13:00:00.000Z" };
 const updated = await pdf.generatePatternPdf(revised, async () => image, "https://freecrochetpatternsforall.com");
