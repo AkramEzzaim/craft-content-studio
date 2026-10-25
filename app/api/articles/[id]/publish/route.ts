@@ -38,7 +38,7 @@ export async function POST(request: Request, { params }: Context) {
         }
         throw error;
       }
-      const saved = await saveArticle({ ...article, status: "published", updatedAt: new Date().toISOString(), publishedAt: article.publishedAt || article.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, publishError: undefined });
+      const saved = await saveArticle({ ...article, status: "published", updatedAt: new Date().toISOString(), publishedAt: article.publishedAt || article.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, publishedBranch: result.target.branch, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, publishError: undefined });
       return Response.json({ article: saved, commitSha: result.commitSha, url: result.target.url, path: result.target.path, reconciled: true });
     }
     if (article.status !== "ready") throw new PublishError("Mark the saved article ready after review before publishing.", "ARTICLE_NOT_READY", 409);
@@ -60,7 +60,7 @@ export async function POST(request: Request, { params }: Context) {
       throw error;
     }
     try {
-      const saved = await saveArticle({ ...progress, status: "published", updatedAt: new Date().toISOString(), publishedAt: progress.publishedAt || progress.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, publishError: undefined });
+      const saved = await saveArticle({ ...progress, status: "published", updatedAt: new Date().toISOString(), publishedAt: progress.publishedAt || progress.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, publishedBranch: result.target.branch, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, publishError: undefined });
       return Response.json({ article: saved, commitSha: result.commitSha, url: result.target.url, path: result.target.path, reconciled: false });
     } catch {
       throw new PublishError("GitHub accepted the commit, but the private status update failed. Use Check publishing outcome to reconcile it.", "COMMIT_RECORDED_STATUS_PENDING", 502);

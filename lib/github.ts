@@ -72,6 +72,31 @@ export async function listDirectory(repo: Repo, path: string): Promise<{ name: s
   if (!Array.isArray(data)) throw new Error("GitHub returned an unexpected directory response");
   return data.filter(x => x.type === "file").map(x => ({ name: x.name, path: x.path, sha: x.sha }));
 }
+export async function listFilesRecursive(repo: Repo, rootPath: string): Promise<string[]> {
+  const root = safePath(rootPath);
+  const pending = [root];
+  const files: string[] = [];
+  while (pending.length) {
+    const directory = pending.pop()!;
+    const data = await contents(repo, directory, undefined, true);
+    if (!data) continue;
+    if (!Array.isArray(data)) throw new Error("GitHub returned an unexpected directory response");
+    for (const entry of data) {
+      if (typeof entry.path !== "string" || !entry.path.startsWith(`${root}/`) || entry.path.split("/").length > root.split("/").length + 5) throw new Error("Unexpected repository asset path");
+      if (entry.type === "dir") pending.push(safePath(entry.path));
+      else if (entry.type === "file") files.push(safePath(entry.path));
+      else throw new Error("Unexpected repository asset type");
+      if (pending.length + files.length > 200) throw new Error("Too many article assets to delete safely");
+    }
+  }
+  return files.sort();
+}
+export async function getFileSha(repo: Repo, path: string): Promise<string | null> {
+  const data = await contents(repo, path, undefined, true);
+  if (!data) return null;
+  if (Array.isArray(data) || data.type !== "file" || typeof data.sha !== "string") throw new Error("GitHub returned an unexpected file response");
+  return data.sha;
+}
 export async function putFileWithCommit(repo: Repo, path: string, content: string, message: string, sha?: string): Promise<GithubWrite> {
   const data = await contents(repo, path, { method: "PUT", body: JSON.stringify({ message, content: Buffer.from(content).toString("base64"), branch: repo.branch, ...(sha ? { sha } : {}) }) });
   if (!data?.content?.sha || !data?.commit?.sha) throw new Error("GitHub did not return file and commit identifiers");

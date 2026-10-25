@@ -13,7 +13,8 @@
     "check:publishing": "node scripts/check-publishing.mjs",
     "check:images": "node scripts/check-images.mjs",
     "check:builder": "node scripts/check-builder.mjs",
-    "check:parser": "node scripts/check-parser.mjs"
+    "check:parser": "node scripts/check-parser.mjs",
+    "check:deletion": "node scripts/check-deletion.mjs"
   },
   "dependencies": {
     "next": "16.4.2",

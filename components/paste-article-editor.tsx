@@ -6,6 +6,7 @@ import { emptyArticle, type Article } from "@/lib/types";
 import { rawFingerprint } from "@/lib/raw-fingerprint";
 import { FeaturedImageUpload } from "./featured-image-upload";
 import { GalleryUpload } from "./gallery-upload";
+import { ArticleDeletion } from "./article-deletion";
 
 type Assignment = "intro" | "materials" | "instructions" | "notes" | "mistakes" | "variations" | "faq" | "other";
 const assignmentOptions: { value: Assignment; label: string }[] = [{ value: "intro", label: "Introduction" }, { value: "materials", label: "Materials" }, { value: "instructions", label: "Round / step" }, { value: "notes", label: "Notes" }, { value: "mistakes", label: "Mistakes" }, { value: "variations", label: "Variations" }, { value: "faq", label: "FAQ" }, { value: "other", label: "Other" }];
@@ -95,5 +96,6 @@ export function PasteArticleEditor({ initial, publicSiteUrl }: { initial?: Artic
       <div className="paste-actions"><Link className="button primary" href={`/articles/${article.id}/edit?tab=review`}>Review Parsed Article</Link><Link className="button secondary" href={`/preview/${article.id}`}>Full Preview</Link></div>
     </section>}
     {article.storageSha && <details className="builder-advanced"><summary>Advanced</summary><p>The original paste remains saved. If parsing cannot represent the article, use the legacy Markdown editor and complete the publishing checks there.</p><button className="button light" onClick={() => void legacy()}>Use legacy Markdown article</button><pre className="generated-markdown-preview">{article.contentMarkdown}</pre></details>}
+    {article.storageSha && <ArticleDeletion article={article} variant="zone" onComplete={result => { if (result.removed) router.push(`/articles?notice=${result.retainedAssets?.length ? "deleted-assets-retained" : result.mode === "draft" ? "draft-deleted" : "everything-deleted"}`); else if (result.article) { setArticle(result.article); setMessage(result.message); } }}/>}
   </div>;
 }

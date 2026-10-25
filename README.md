@@ -51,7 +51,9 @@ To test one article safely:
 6. Choose **Confirm Publish** once. Copy the commit SHA from the success screen, open GitHub, and verify both the new Markdown file and image under `public/images/patterns/`. The expected public URL may become available after Vercel finishes its normal build.
 7. To test replacement protection, edit the published article, replace its image, mark it ready, and reopen the confirmation. **Cancel** leaves the public files intact; updating requires **Update existing article** and a second **Confirm Update** click.
 
-Local checks: `npm run check:parser`, `npm run check:compatibility`, `npm run check:publishing`, `npm run check:images`, `npm run check:builder`, `npm run typecheck`, `npm run lint`, and `npm run build`.
+Article deletion is available from each row’s More actions menu and from the editor Danger Zone. Draft deletion removes the private JSON and all files under that draft’s private asset folder. Published articles offer **Unpublish** (remove the public article and its article-specific image folder, retaining the private draft) or **Delete Everything** (remove both public and private files). Deletion fetches each file’s current GitHub SHA before using the Contents API, requires a confirmation dialog, and requires typing `DELETE` for Delete Everything. Cleanup can be retried after a partial failure; shared or legacy flat public images outside the article folder are retained and reported.
+
+Local checks: `npm run check:deletion`, `npm run check:parser`, `npm run check:compatibility`, `npm run check:publishing`, `npm run check:images`, `npm run check:builder`, `npm run typecheck`, `npm run lint`, and `npm run build`.
 
 ## n8n contract
 
