@@ -60,7 +60,7 @@ export function parseArticle(value: unknown, prior?: Article): Article {
   };
   if (prior) {
     out.id = prior.id; out.createdAt = prior.createdAt; out.aiGenerated = prior.aiGenerated; out.publishedAt = prior.publishedAt;
-    out.publicUrl = prior.publicUrl; out.publishedSha = prior.publishedSha; out.publishedPath = prior.publishedPath; out.publishedBranch = prior.publishedBranch;
+    out.publicUrl = prior.publicUrl; out.pdfUrl = prior.pdfUrl; out.publishedSha = prior.publishedSha; out.publishedPath = prior.publishedPath; out.publishedBranch = prior.publishedBranch;
     out.githubCommitSha = prior.githubCommitSha; out.githubPath = prior.githubPath; out.githubRepository = prior.githubRepository;
     out.draftImage = prior.draftImage; out.status = "review";
   } else out.status = "draft";

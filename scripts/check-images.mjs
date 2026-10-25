@@ -48,6 +48,7 @@ const github = {
   studioRepo: () => privateRepo, craftRepo: () => publicRepo, assertPrivateRepo: async () => {}, verifyRepositoryBranch: async () => {},
   safePath: value => { if (value.includes("..")) throw new Error("Invalid path"); return value; },
   getBinaryFile: async (repo, path) => repo.name === "private" ? privateFile : publicFiles.get(path) || null,
+  getFileSha: async (_repo, path) => publicFiles.get(path)?.sha || null,
   putBinaryFileWithCommit: async (repo, path, bytes, message, sha) => { writes.push({ kind: "image", path, message, sha }); const file = { bytes, sha: "b".repeat(40) }; if (repo.name === "private") privateFile = file; else publicFiles.set(path, file); return { fileSha: file.sha, commitSha: "c".repeat(40) }; },
   branchHeadSha: async () => "h".repeat(40),
   putFilesAtomic: async (_repo, files, message, expectedBranchHead) => {
@@ -123,7 +124,7 @@ assert.equal(restored.draftImage.path, saved.draftImage.path);
 
 saved = { ...saved, status: "ready", accuracyChecks: [...types.accuracyItems] };
 const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": github, "./validation": validation, "./public-body": load("lib/public-body.ts") });
-const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./image-path": paths, "./images": images, "./validation": validation, "./public-body": load("lib/public-body.ts") });
+const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./image-path": paths, "./images": images, "./validation": validation, "./public-body": load("lib/public-body.ts"), "./pattern-pdf": { generatePatternPdf: async () => Buffer.from("%PDF-1.7\nmock\n%%EOF") } });
 const target = await publishing.inspectTarget(saved);
 assert.equal(target.image.path, "public/images/patterns/easy-crochet-flower-pattern/featured.png");
 assert.equal(target.image.replaceRequired, false);
@@ -131,7 +132,7 @@ assert.equal(target.existing, null);
 const committed = await publishing.executePublicCommit(saved, "create");
 assert.equal(committed.target.path, "content/patterns/easy-crochet-flower-pattern.md");
 assert.equal(writes.at(-1).kind, "atomic");
-assert.deepEqual(writes.at(-1).files.sort(), [target.image.path, committed.target.path].sort());
+assert.deepEqual(writes.at(-1).files.sort(), [target.image.path, committed.target.path, target.pdf.path].sort());
 assert.equal(publicFiles.get(target.image.path).bytes.equals(png), true);
 assert.match(publicFiles.get(committed.target.path).content, /featuredImage: "\/images\/patterns\/easy-crochet-flower-pattern\/featured.png"/);
 assert.match(fs.readFileSync("../craft/app/patterns/[slug]/page.tsx", "utf8"), /<Image src=\{pattern\.featuredImage\}/);

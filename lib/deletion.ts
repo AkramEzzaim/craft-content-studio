@@ -1,6 +1,6 @@
 import "server-only";
 import { assertPrivateRepo, craftRepo, deleteFile, getFile, getFileSha, listFilesRecursive, safePath, studioRepo, verifyRepositoryBranch, type Repo } from "./github";
-import { publicPath } from "./public-adapter";
+import { publicPath, publicPdfPath } from "./public-adapter";
 import { draftArticlePath, saveArticle } from "./storage";
 import { hasPublicVersion, type Article } from "./types";
 
@@ -14,7 +14,7 @@ function publishedTarget(article: Article, repository: Repo) {
   if (!path.startsWith(`${root}/`) || !path.endsWith(".md")) throw new Error("Recorded public article path is outside the configured content directory");
   const slug = path.slice(root.length + 1, -3);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("Recorded public article slug is invalid");
-  return { path, slug, imageRoot: `public/images/patterns/${slug}` };
+  return { path, slug, pdfPath: publicPdfPath({ ...article, slug }), imageRoot: `public/images/patterns/${slug}` };
 }
 async function removeCurrentFile(repo: Repo, path: string, message: string) {
   const sha = await getFileSha(repo, path);
@@ -70,6 +70,9 @@ export async function deleteArticleFiles(article: Article, mode: DeleteMode): Pr
       stage = "public article deletion";
       if (publicFile && await removeCurrentFile(publicRepo, target.path, `content: delete ${target.slug}`)) completed.push("Public article removed from Hearth & Thread");
       else completed.push("Public article already absent");
+      stage = "public PDF deletion";
+      if (await removeCurrentFile(publicRepo, target.pdfPath, `content: delete ${target.slug} PDF`)) completed.push("Public PDF removed");
+      else completed.push("Public PDF already absent");
       let publicDeleted = 0;
       let publicAbsent = 0;
       for (const path of publicAssets) {
@@ -81,7 +84,7 @@ export async function deleteArticleFiles(article: Article, mode: DeleteMode): Pr
     }
     if (mode === "unpublish") {
       stage = "private draft status update";
-      const updated = await saveArticle({ ...article, status: "draft", publishedAt: undefined, publicUrl: undefined, publishedSha: undefined, publishedPath: undefined, publishedBranch: undefined, githubCommitSha: undefined, githubPath: undefined, githubRepository: undefined, publishError: undefined, updatedAt: new Date().toISOString() });
+      const updated = await saveArticle({ ...article, status: "draft", publishedAt: undefined, publicUrl: undefined, pdfUrl: undefined, publishedSha: undefined, publishedPath: undefined, publishedBranch: undefined, githubCommitSha: undefined, githubPath: undefined, githubRepository: undefined, publishError: undefined, updatedAt: new Date().toISOString() });
       completed.push("Private draft retained and reset to draft");
       return { complete: true, removed: false, mode, article: updated, completed, retainedAssets, message: `Article unpublished from Hearth & Thread. The Studio draft remains available.${retainedAssets.length ? ` ${retainedAssets.length} legacy or non-image asset${retainedAssets.length === 1 ? " was" : "s were"} retained for safety.` : ""}` };
     }

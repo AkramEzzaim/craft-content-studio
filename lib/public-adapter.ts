@@ -11,11 +11,19 @@ export function publicPath(a: Article) {
   const root = safePath(process.env.CRAFT_CONTENT_PATH || "");
   return safePath(`${root}/${a.slug}.md`);
 }
+export function publicPdfPath(a: Article) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(a.slug)) throw new Error("Invalid article slug");
+  return safePath(`public/pdfs/${a.slug}.pdf`);
+}
 export function publicUrl(a: Article) {
   const base = process.env.CRAFT_SITE_URL?.trim() || "https://craft-iota-wheat.vercel.app";
   const parsed = new URL(base);
   if (parsed.protocol !== "https:") throw new Error("Public site URL must use HTTPS");
   return `${parsed.origin}/patterns/${a.slug}`;
+}
+export function publicPdfUrl(a: Article) {
+  publicPdfPath(a);
+  return new URL(`/pdfs/${a.slug}.pdf`, publicUrl(a)).toString();
 }
 export function serializePublicArticle(a: Article, date = a.updatedAt.slice(0, 10)) {
   const fields: [string, string][] = [

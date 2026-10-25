@@ -11,20 +11,24 @@
     "hash-password": "node scripts/hash-password.mjs",
     "check:compatibility": "node scripts/check-compatibility.mjs",
     "check:publishing": "node scripts/check-publishing.mjs",
+    "check:pdf": "node scripts/check-pdf.mjs",
     "check:images": "node scripts/check-images.mjs",
     "check:builder": "node scripts/check-builder.mjs",
     "check:parser": "node scripts/check-parser.mjs",
     "check:deletion": "node scripts/check-deletion.mjs"
   },
   "dependencies": {
+    "lucide-react": "^1.59.0",
     "next": "16.4.2",
+    "pdfkit": "^0.20.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "lucide-react": "^1.59.0"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.7",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

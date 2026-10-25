@@ -20,17 +20,31 @@ const validation = load("lib/validation.ts", { "./types": types, "./article-defa
 const repo = { owner: "AkramEzzaim", name: "craft", branch: "main", token: "test-only" };
 const calls = [];
 let remote = null;
+let remotePdf = null;
+let failPdf = false;
 let branchChecks = 0;
+const pdfBytes = Buffer.from("%PDF-1.7\nmock PDF content\n%%EOF");
 const github = {
   craftRepo: () => repo,
   safePath: value => { if (value.includes("..")) throw new Error("Invalid repository path"); return value; },
   verifyRepositoryBranch: async () => { branchChecks++; },
   fileExists: async (_repo, path) => path === "public/images/patterns/flower.png",
   getFile: async () => remote,
-  getBinaryFile: async () => null,
+  getFileSha: async (_repo, path) => path.endsWith(".pdf") ? remotePdf?.sha || null : remote?.sha || null,
+  getBinaryFile: async (_repo, path) => path.endsWith(".pdf") ? remotePdf : null,
   studioRepo: () => ({ ...repo, name: "private-studio" }),
-  putBinaryFileWithCommit: async () => { throw new Error("Unexpected image write for legacy fixture"); },
+  branchHeadSha: async () => "b".repeat(40),
   latestCommitSha: async () => "c".repeat(40),
+  putFilesAtomic: async (_repo, files, message, expectedBranchHead) => {
+    assert.equal(expectedBranchHead, "b".repeat(40));
+    calls.push({ files, message });
+    const markdown = files.find(file => file.path.endsWith(".md"));
+    const pdf = files.find(file => file.path.endsWith(".pdf"));
+    assert.ok(pdf, "every publishing commit must contain a PDF");
+    if (markdown) remote = { content: markdown.bytes.toString("utf8"), sha: String(calls.length).repeat(40) };
+    remotePdf = { bytes: pdf.bytes, sha: `p${calls.length}` };
+    return { fileShas: { ...(markdown ? { [markdown.path]: remote.sha } : {}), [pdf.path]: remotePdf.sha }, commitSha: "c".repeat(40) };
+  },
   putFileWithCommit: async (_repo, path, content, message, sha) => {
     calls.push({ path, content, message, sha });
     remote = { content, sha: String(calls.length).repeat(40) };
@@ -38,7 +52,7 @@ const github = {
   },
 };
 const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": github, "./validation": validation, "./public-body": body });
-const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./validation": validation, "./public-body": body, "./image-path": imagePath, "./images": images });
+const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./validation": validation, "./public-body": body, "./image-path": imagePath, "./images": images, "./pattern-pdf": { generatePatternPdf: async () => { if (failPdf) throw new Error("renderer failed"); return pdfBytes; } } });
 const React = await import("react");
 const ReactDOMServer = await import("react-dom/server");
 const ui = load("components/publish-panel.tsx", { "react": React, "react/jsx-runtime": await import("react/jsx-runtime"), "next/link": ({ children }) => children, "lucide-react": { Check: () => null, ExternalLink: () => null, Send: () => null, X: () => null }, "@/lib/validation": validation }, true);
@@ -59,6 +73,7 @@ assert.doesNotMatch(unsavedHtml, /PUBLISH TO HEARTH &amp; THREAD/);
 const inspected = await publishing.inspectTarget(article);
 assert.equal(inspected.target.path, "content/patterns/easy-crochet-flower.md");
 assert.equal(inspected.target.url, "https://craft-iota-wheat.vercel.app/patterns/easy-crochet-flower");
+assert.equal(inspected.pdf.path, "public/pdfs/easy-crochet-flower.pdf");
 assert.equal(inspected.existing, null);
 const hookState = [];
 let hookIndex = 0;
@@ -70,21 +85,21 @@ const publishButton = firstPanel.find(node => node?.type === "button" && flatten
 assert.ok(publishButton, "ready article shows publish button");
 const savedFetch = globalThis.fetch;
 try {
-  globalThis.fetch = async () => Response.json({ title: article.title, slug: article.slug, status: "ready", qualityScore: 70, seoScore: 60, warnings: [], target: inspected.target, existing: null, storageSha: article.storageSha, recoveryAvailable: false });
+  globalThis.fetch = async () => Response.json({ title: article.title, slug: article.slug, status: "ready", qualityScore: 70, seoScore: 60, warnings: [], target: inspected.target, pdf: inspected.pdf, existing: null, storageSha: article.storageSha, recoveryAvailable: false });
   await publishButton.props.onClick();
   const confirmText = flatten(renderPanel()).filter(value => typeof value === "string").join(" ");
   assert.match(confirmText, /Confirm publication/);
   assert.match(confirmText, /content\/patterns\/easy-crochet-flower\.md/);
+  assert.match(confirmText, /public\/pdfs\/easy-crochet-flower\.pdf/);
   assert.match(confirmText, /Confirm Publish/);
   assert.match(confirmText, /https:\/\/craft-iota-wheat\.vercel\.app\/patterns\/easy-crochet-flower/);
 } finally { globalThis.fetch = savedFetch; }
 const first = await publishing.executePublicCommit(article, "create");
 assert.equal(first.commitSha, "c".repeat(40));
 assert.equal(calls[0].message, "content: publish easy-crochet-flower");
-assert.equal(calls[0].sha, undefined);
-assert.match(calls[0].content, /status: "published"/);
-assert.equal((calls[0].content.match(/## Materials/g) || []).length, 1);
-assert.equal((calls[0].content.match(/## Tools/g) || []).length, 1);
+assert.match(remote.content, /status: "published"/);
+assert.equal((remote.content.match(/## Materials/g) || []).length, 1);
+assert.equal((remote.content.match(/## Tools/g) || []).length, 1);
 await assert.rejects(() => publishing.executePublicCommit(article, "create"), error => error.code === "ARTICLE_ALREADY_EXISTS");
 assert.equal(calls.length, 1, "duplicate create must not write");
 await assert.rejects(() => publishing.executePublicCommit(article, "update", "0".repeat(40)), error => error.code === "ARTICLE_CHANGED");
@@ -93,10 +108,15 @@ const revised = { ...article, contentMarkdown: article.contentMarkdown + "\n## F
 const second = await publishing.executePublicCommit(revised, "update", remote.sha);
 assert.equal(second.commitSha, "c".repeat(40));
 assert.equal(calls[1].message, "content: update easy-crochet-flower");
-assert.equal(calls[1].sha, "1".repeat(40));
+assert.equal(calls[1].files.find(file => file.path.endsWith(".pdf")).path, "public/pdfs/easy-crochet-flower.pdf");
+assert.equal(calls[1].files.find(file => file.path.endsWith(".md")).path, "content/patterns/easy-crochet-flower.md");
 const recovered = await publishing.executePublicCommit(revised, "reconcile");
 assert.equal(recovered.reconciled, true);
 assert.equal(calls.length, 2, "reconciliation must not write");
+failPdf = true;
+await assert.rejects(() => publishing.executePublicCommit(revised, "update", remote.sha), error => error.code === "PDF_GENERATION_FAILED" && /renderer failed/.test(error.message));
+assert.equal(calls.length, 2, "PDF failure must not write any public file");
+failPdf = false;
 await assert.rejects(() => publishing.executePublicCommit({ ...article, title: "" }, "create"), error => error.code === "INVALID_ARTICLE");
 await assert.rejects(() => publishing.executePublicCommit({ ...article, slug: "../escape" }, "create"), error => error.code === "INVALID_ARTICLE");
 assert.ok(branchChecks >= 4);
@@ -111,7 +131,7 @@ const context = { params: Promise.resolve({ id: article.id }) };
 const req = value => new Request("http://localhost/api/articles/id/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
 const guarded = load("app/api/articles/[id]/publish/route.ts", { ...routeImports, "@/lib/auth": { apiAuth: async () => Response.json({ error: "Unauthorized" }, { status: 401 }) }, "@/lib/storage": { getArticle: async () => { throw new Error("should not be called"); } } });
 assert.equal((await guarded.POST(req({ mode: "create" }), context)).status, 401);
-remote = null; calls.length = 0; saves = 0; stored = { ...article };
+remote = null; remotePdf = null; calls.length = 0; saves = 0; stored = { ...article };
 const preview = await route.GET(new Request("http://localhost/api/articles/id/publish"), context);
 assert.equal(preview.status, 200);
 assert.equal((await preview.json()).target.filename, "easy-crochet-flower.md");
@@ -123,14 +143,27 @@ assert.equal(stored.status, "published");
 assert.equal(stored.githubPath, "content/patterns/easy-crochet-flower.md");
 assert.equal(stored.githubCommitSha, "c".repeat(40));
 assert.equal(stored.publicUrl, inspected.target.url);
+assert.equal(stored.pdfUrl, inspected.pdf.url);
 assert.ok(stored.publishedAt);
 assert.equal(saves, 2);
+const pdfOnly = await publishing.regeneratePublicPdf(stored);
+assert.equal(pdfOnly.pdfUrl, inspected.pdf.url);
+assert.deepEqual(calls.at(-1).files.map(file => file.path), ["public/pdfs/easy-crochet-flower.pdf"]);
+const pdfRoute = load("app/api/articles/[id]/pdf/route.ts", routeImports);
+const regenerated = await pdfRoute.POST(req({ storageSha: stored.storageSha }), context);
+assert.equal(regenerated.status, 200);
+assert.equal((await regenerated.json()).pdfUrl, inspected.pdf.url);
+failPdf = true;
+const beforePdfFailure = calls.length;
+await assert.rejects(() => publishing.regeneratePublicPdf(stored), error => error.code === "PDF_GENERATION_FAILED");
+assert.equal(calls.length, beforePdfFailure, "PDF regeneration failure must not write");
+failPdf = false;
 stored = { ...article, storageSha: "draft-new" }; saves = 0;
 const duplicate = await route.POST(req({ mode: "create", storageSha: stored.storageSha }), context);
 assert.equal(duplicate.status, 409);
 assert.equal((await duplicate.json()).code, "ARTICLE_ALREADY_EXISTS");
 assert.equal(saves, 0);
-remote = null; stored = { ...article, status: "publishing", storageSha: "draft-pending" }; saves = 0;
+remote = null; remotePdf = null; stored = { ...article, status: "publishing", storageSha: "draft-pending" }; saves = 0;
 const pendingPreview = await route.GET(new Request("http://localhost/api/articles/id/publish"), context);
 assert.equal((await pendingPreview.json()).retryAvailable, true);
 const unlocked = await route.POST(req({ mode: "reconcile", storageSha: stored.storageSha }), context);

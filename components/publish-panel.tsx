@@ -8,11 +8,12 @@ import { assess, publishIssues, publishingFieldsPresent, publishingReadiness } f
 type Preview = {
   title: string; slug: string; status: string; qualityScore: number; seoScore: number; warnings: string[];
   target: { repository: string; branch: string; path: string; url: string; filename: string };
+  pdf: { path: string; url: string; existingSha: string | null };
   image?: { path: string; url: string; existingSha?: string; replaceRequired: boolean; sameContent: boolean } | null;
   gallery?: { path: string; url: string; existingSha?: string; replaceRequired: boolean; sameContent: boolean }[];
   existing: { sha: string } | null; storageSha: string; recoveryAvailable: boolean; retryAvailable?: boolean;
 };
-type Result = { article: Article; commitSha?: string; url: string; path: string; reconciled: boolean };
+type Result = { article: Article; commitSha?: string; url: string; pdfUrl: string; path: string; reconciled: boolean };
 type ApiError = { error?: string; code?: string; existingSha?: string; article?: Article };
 export function PublishPanel({ article, missingConfig, dirty, onArticleChange }: { article: Article; missingConfig: string[]; dirty: boolean; onArticleChange: (article: Article) => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -20,6 +21,9 @@ export function PublishPanel({ article, missingConfig, dirty, onArticleChange }:
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const [pdfMessage, setPdfMessage] = useState("");
   const configured = missingConfig.length === 0;
   const issues = publishIssues(article);
   const readiness = publishingReadiness(article, configured);
@@ -66,6 +70,17 @@ export function PublishPanel({ article, missingConfig, dirty, onArticleChange }:
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Publishing failed"); }
     finally { setLoading(false); }
   }
+  async function regeneratePdf() {
+    setPdfLoading(true); setPdfError(""); setPdfMessage("");
+    try {
+      const response = await fetch(`/api/articles/${article.id}/pdf`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storageSha: article.storageSha }) });
+      const data = await response.json() as { article?: Article; pdfUrl?: string; error?: string };
+      if (!response.ok || !data.article) throw new Error(data.error || "Could not regenerate the PDF");
+      onArticleChange(data.article);
+      setPdfMessage("PDF published ✓. The public site may still be rebuilding.");
+    } catch (cause) { setPdfError(cause instanceof Error ? cause.message : "Could not regenerate the PDF"); }
+    finally { setPdfLoading(false); }
+  }
   function close() { if (!loading) { setPreview(null); setResult(null); setError(""); setStage("review"); } }
   const commitUrl = result?.commitSha && /^[a-f0-9]{40}$/i.test(result.commitSha) && preview ? `https://github.com/${preview.target.repository}/commit/${result.commitSha}` : "";
   return <>
@@ -79,10 +94,11 @@ export function PublishPanel({ article, missingConfig, dirty, onArticleChange }:
       {!dirty && issues.length === 0 && scores.seoScore < 70 && <details className="publish-warnings"><summary>Optional search suggestions</summary><p>Studio generated the search metadata. You can refine it under Advanced Settings.</p></details>}
       {showPublish && <button className="button primary publish-button" disabled={!mayPublish || loading} onClick={open}><Send size={17}/> PUBLISH TO HEARTH &amp; THREAD</button>}
       {mayRecover && <button className="button secondary publish-button" disabled={loading} onClick={open}>Check publishing outcome</button>}
+      {article.status === "published" && <div className="publish-hint"><strong>Printable PDF</strong><p>{article.pdfUrl ? "PDF published ✓" : "No PDF has been recorded for this article yet."}</p><button className="button secondary" type="button" disabled={dirty || pdfLoading} onClick={regeneratePdf}>{pdfLoading ? "Generating PDF…" : article.pdfUrl ? "Regenerate PDF" : "Generate PDF"}</button>{article.pdfUrl && <a className="button secondary" href={article.pdfUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open PDF</a>}{pdfMessage && <p role="status">{pdfMessage}</p>}{pdfError && <p className="form-error" role="alert">{pdfError}</p>}</div>}
     </div>
     {preview && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}><div className="publish-modal" role="dialog" aria-modal="true" aria-label="Confirm publication"><button className="modal-close" onClick={close} disabled={loading} aria-label="Close"><X size={20}/></button>
-      {stage === "success" && result ? <><div className="publish-success-icon"><Check size={28}/></div><div className="eyebrow">GITHUB COMMIT CONFIRMED</div><h2>Article published successfully.</h2><p>The GitHub commit is complete. Vercel may still be rebuilding the public site; the URL is expected, not yet verified live.</p><dl className="publish-summary"><div><dt>Git commit</dt><dd>{result.commitSha || "Commit recorded"}</dd></div><div><dt>Expected public URL</dt><dd>{result.url}</dd></div></dl><div className="publish-modal-actions">{commitUrl && <a className="button secondary" href={commitUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> View GitHub Commit</a>}<a className="button secondary" href={result.url} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open Public Article</a><Link className="button primary" href="/articles">Return to Articles</Link></div></> : <><div className="eyebrow">{stage === "update" || stage === "image" ? "SECOND CONFIRMATION" : preview.status === "publishing" ? "PUBLISHING OUTCOME" : "PUBLISHING REVIEW"}</div><h2>{stage === "update" ? "Update the existing article?" : stage === "image" ? "Replace the existing public image?" : preview.status === "publishing" ? "Check the previous commit" : "Confirm publication"}</h2><p>{stage === "update" ? "This will replace the public article and, if needed, its featured image using their current GitHub file SHAs." : stage === "image" ? "An image with this filename already exists. Confirming will replace it before committing the new article." : preview.status === "publishing" ? "A previous attempt may have committed successfully. Checking it will not create another public commit." : "Review the article and image destinations before making a public GitHub commit."}</p>
-        <dl className="publish-summary"><div><dt>Title</dt><dd>{preview.title}</dd></div><div><dt>Slug</dt><dd>{preview.slug}</dd></div><div><dt>Status</dt><dd>{preview.status}</dd></div><div><dt>Repository</dt><dd>{preview.target.repository}</dd></div><div><dt>Branch</dt><dd>{preview.target.branch}</dd></div><div><dt>Article file</dt><dd>{preview.target.path}</dd></div>{preview.image && <div><dt>Featured image</dt><dd>{preview.image.path}</dd></div>}{preview.gallery?.map(item => <div key={item.path}><dt>More photo</dt><dd>{item.path}</dd></div>)}<div><dt>Expected URL</dt><dd>{preview.target.url}</dd></div></dl>
+      {stage === "success" && result ? <><div className="publish-success-icon"><Check size={28}/></div><div className="eyebrow">GITHUB COMMIT CONFIRMED</div><h2>Article and PDF published ✓</h2><p>The GitHub commit is complete. Vercel may still be rebuilding the public site; these URLs are expected, not yet verified live.</p><dl className="publish-summary"><div><dt>Git commit</dt><dd>{result.commitSha || "Commit recorded"}</dd></div><div><dt>Expected public URL</dt><dd>{result.url}</dd></div><div><dt>PDF published ✓</dt><dd>{result.pdfUrl}</dd></div></dl><div className="publish-modal-actions">{commitUrl && <a className="button secondary" href={commitUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> View GitHub Commit</a>}<a className="button secondary" href={result.url} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open Public Article</a><a className="button secondary" href={result.pdfUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open PDF</a><Link className="button primary" href="/articles">Return to Articles</Link></div></> : <><div className="eyebrow">{stage === "update" || stage === "image" ? "SECOND CONFIRMATION" : preview.status === "publishing" ? "PUBLISHING OUTCOME" : "PUBLISHING REVIEW"}</div><h2>{stage === "update" ? "Update the existing article?" : stage === "image" ? "Replace the existing public image?" : preview.status === "publishing" ? "Check the previous commit" : "Confirm publication"}</h2><p>{stage === "update" ? "This will replace the public article, regenerate its PDF, and update any changed images in one commit." : stage === "image" ? "An image with this filename already exists. Confirming will replace it before committing the new article and PDF." : preview.status === "publishing" ? "A previous attempt may have committed successfully. Checking it will not create another public commit." : "Review the article, PDF, and image destinations before making a public GitHub commit."}</p>
+        <dl className="publish-summary"><div><dt>Title</dt><dd>{preview.title}</dd></div><div><dt>Slug</dt><dd>{preview.slug}</dd></div><div><dt>Status</dt><dd>{preview.status}</dd></div><div><dt>Repository</dt><dd>{preview.target.repository}</dd></div><div><dt>Branch</dt><dd>{preview.target.branch}</dd></div><div><dt>Article file</dt><dd>{preview.target.path}</dd></div><div><dt>PDF</dt><dd>Ready to generate · {preview.pdf.path}</dd></div>{preview.image && <div><dt>Featured image</dt><dd>{preview.image.path}</dd></div>}{preview.gallery?.map(item => <div key={item.path}><dt>More photo</dt><dd>{item.path}</dd></div>)}<div><dt>Expected URL</dt><dd>{preview.target.url}</dd></div><div><dt>Expected PDF URL</dt><dd>{preview.pdf.url}</dd></div></dl>
         {preview.existing && preview.status !== "publishing" && <div className="publish-conflict"><strong>An article with this slug already exists.</strong><span>It will remain unchanged unless you explicitly confirm the update.</span></div>}
         {preview.image?.replaceRequired && preview.status !== "publishing" && <div className="publish-conflict"><strong>A public image with this filename already exists.</strong><span>Confirm replacement to use the selected draft image.</span></div>}
         {!!preview.gallery?.some(item => item.replaceRequired) && preview.status !== "publishing" && <div className="publish-conflict"><strong>A public photo already exists at this destination.</strong><span>Remove and upload the affected draft photo again before publishing: {preview.gallery.filter(item => item.replaceRequired).map(item => item.path).join(", ")}</span></div>}

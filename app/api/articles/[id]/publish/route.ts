@@ -13,9 +13,9 @@ export async function GET(request: Request, { params }: Context) {
     const article = await getArticle((await params).id);
     if (!article) return Response.json({ error: "Article not found", code: "ARTICLE_NOT_FOUND" }, { status: 404 });
     if (!["ready", "publishing"].includes(article.status)) throw new PublishError("Mark the saved article ready after review before publishing.", "ARTICLE_NOT_READY", 409);
-    const { target, existing, image, gallery } = await inspectTarget(article);
+    const { target, pdf, existing, image, gallery } = await inspectTarget(article);
     const scores = assess(article);
-    return Response.json({ title: article.title, slug: article.slug, status: article.status, qualityScore: scores.qualityScore, seoScore: scores.seoScore, warnings: [...scores.quality, ...scores.seo].filter(x => !x.pass).map(x => x.label), target, image, gallery, existing: existing ? { sha: existing.sha } : null, storageSha: article.storageSha, recoveryAvailable: article.status === "publishing" && !!existing && existing.content === serializePublicArticle(article) && (!image || image.sameContent) && gallery.every(item => item.sameContent), retryAvailable: article.status === "publishing" && !existing });
+    return Response.json({ title: article.title, slug: article.slug, status: article.status, qualityScore: scores.qualityScore, seoScore: scores.seoScore, warnings: [...scores.quality, ...scores.seo].filter(x => !x.pass).map(x => x.label), target, pdf, image, gallery, existing: existing ? { sha: existing.sha } : null, storageSha: article.storageSha, recoveryAvailable: article.status === "publishing" && !!existing && !!pdf.existingSha && existing.content === serializePublicArticle(article) && (!image || image.sameContent) && gallery.every(item => item.sameContent), retryAvailable: article.status === "publishing" && !existing });
   } catch (error) { return errorResponse(error); }
 }
 export async function POST(request: Request, { params }: Context) {
@@ -38,8 +38,8 @@ export async function POST(request: Request, { params }: Context) {
         }
         throw error;
       }
-      const saved = await saveArticle({ ...article, status: "published", updatedAt: new Date().toISOString(), publishedAt: article.publishedAt || article.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, publishedBranch: result.target.branch, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, publishError: undefined });
-      return Response.json({ article: saved, commitSha: result.commitSha, url: result.target.url, path: result.target.path, reconciled: true });
+      const saved = await saveArticle({ ...article, status: "published", updatedAt: new Date().toISOString(), publishedAt: article.publishedAt || article.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, publishedBranch: result.target.branch, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, pdfUrl: result.pdfUrl, publishError: undefined });
+      return Response.json({ article: saved, commitSha: result.commitSha, url: result.target.url, pdfUrl: result.pdfUrl, path: result.target.path, reconciled: true });
     }
     if (article.status !== "ready") throw new PublishError("Mark the saved article ready after review before publishing.", "ARTICLE_NOT_READY", 409);
     const issues = publishIssues(article); if (issues.length) throw new PublishError(issues.join("; "), "INVALID_ARTICLE");
@@ -60,8 +60,8 @@ export async function POST(request: Request, { params }: Context) {
       throw error;
     }
     try {
-      const saved = await saveArticle({ ...progress, status: "published", updatedAt: new Date().toISOString(), publishedAt: progress.publishedAt || progress.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, publishedBranch: result.target.branch, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, publishError: undefined });
-      return Response.json({ article: saved, commitSha: result.commitSha, url: result.target.url, path: result.target.path, reconciled: false });
+      const saved = await saveArticle({ ...progress, status: "published", updatedAt: new Date().toISOString(), publishedAt: progress.publishedAt || progress.updatedAt, publishedSha: result.fileSha, publishedPath: result.target.path, publishedBranch: result.target.branch, githubCommitSha: result.commitSha, githubPath: result.target.path, githubRepository: result.target.repository, publicUrl: result.target.url, pdfUrl: result.pdfUrl, publishError: undefined });
+      return Response.json({ article: saved, commitSha: result.commitSha, url: result.target.url, pdfUrl: result.pdfUrl, path: result.target.path, reconciled: false });
     } catch {
       throw new PublishError("GitHub accepted the commit, but the private status update failed. Use Check publishing outcome to reconcile it.", "COMMIT_RECORDED_STATUS_PENDING", 502);
     }

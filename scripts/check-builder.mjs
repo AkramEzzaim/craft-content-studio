@@ -40,6 +40,7 @@ const repo = { owner: "test", name: "craft", branch: "main", token: "test" };
 const github = {
   studioRepo: () => ({ ...repo, name: "studio" }), craftRepo: () => repo, assertPrivateRepo: async () => {}, verifyRepositoryBranch: async () => {}, branchHeadSha: async () => "h".repeat(40),
   getBinaryFile: async (target, path) => target.name === "studio" ? privateFiles.get(path) || null : publicFiles.get(path) || null,
+  getFileSha: async (_target, path) => publicFiles.get(path)?.sha || null,
   putBinaryFileWithCommit: async (_target, path, bytes) => { privateFiles.set(path, { bytes, sha: "b".repeat(40) }); return { fileSha: "b".repeat(40), commitSha: "c".repeat(40) }; },
   deleteFile: async (_target, path) => { privateFiles.delete(path); },
   getFile: async (_target, path) => publicFiles.get(path) || null,
@@ -80,7 +81,7 @@ const reordered = validation.parseArticle({ ...reopened, galleryImages: [secondG
 assert.equal(reordered.galleryImages[0].id, secondGallery.id);
 const body = load("lib/public-body.ts");
 const adapter = load("lib/public-adapter.ts", { "server-only": {}, "./github": { ...github, safePath: x => x }, "./validation": validation, "./public-body": body });
-const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./validation": validation, "./public-body": body, "./image-path": paths, "./images": images });
+const publishing = load("lib/publishing.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./validation": validation, "./public-body": body, "./image-path": paths, "./images": images, "./pattern-pdf": { generatePatternPdf: async () => Buffer.from("%PDF-1.7\nmock\n%%EOF") } });
 assert.deepEqual(validation.publishIssues(saved), []);
 const result = await publishing.executePublicCommit(saved, "create");
 assert.equal(result.target.path, `content/patterns/${article.slug}.md`);

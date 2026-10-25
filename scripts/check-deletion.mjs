@@ -11,7 +11,7 @@ process.env.CRAFT_CONTENT_PATH = "content/patterns";
 const types = load("lib/types.ts");
 const id = "11111111-1111-4111-8111-111111111111", slug = "sunflower-coaster";
 const draftPath = `studio/articles/${id}.json`, privateRoot = `studio/assets/${id}`;
-const publicPath = `content/patterns/${slug}.md`, imageRoot = `public/images/patterns/${slug}`;
+const publicPath = `content/patterns/${slug}.md`, pdfPath = `public/pdfs/${slug}.pdf`, imageRoot = `public/images/patterns/${slug}`;
 const privateRepo = { owner: "owner", name: "private", branch: "main", token: "private-token" };
 const publicRepo = { owner: "owner", name: "public", branch: "main", token: "public-token" };
 let privateFiles = new Map(), publicFiles = new Map(), currentArticle, failPath = "", failStatusSave = false, deletions = [], shaReads = [];
@@ -35,16 +35,16 @@ const storage = {
   getArticle: async () => currentArticle,
   saveArticle: async next => { if (failStatusSave) throw new Error("Private draft status save failed"); currentArticle = { ...next, storageSha: "new-draft-sha" }; privateFiles.set(draftPath, { sha: "new-draft-sha", content: JSON.stringify(currentArticle) }); return currentArticle; },
 };
-const adapter = { publicPath: article => `content/patterns/${article.slug}.md` };
+const adapter = { publicPath: article => `content/patterns/${article.slug}.md`, publicPdfPath: article => `public/pdfs/${article.slug}.pdf` };
 const deletion = load("lib/deletion.ts", { "server-only": {}, "./github": github, "./public-adapter": adapter, "./storage": storage, "./types": types });
 const route = load("app/api/articles/[id]/route.ts", { "@/lib/auth": { apiAuth: async () => null }, "@/lib/api": { errorResponse: error => Response.json({ error: error.message }, { status: 502 }) }, "@/lib/storage": storage, "@/lib/validation": {}, "@/lib/deletion": deletion, "@/lib/types": types });
 const context = { params: Promise.resolve({ id }) };
 const request = (mode, confirmation, storageSha = currentArticle.storageSha) => new Request(`http://localhost/api/articles/${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, confirmation, storageSha }) });
 function reset(published) {
   const base = { ...types.emptyArticle(), id, title: "Sunflower Coaster", slug, storageSha: "draft-sha" };
-  currentArticle = published ? { ...base, status: "published", publishedPath: publicPath, publishedSha: "public-sha", publishedBranch: "main", githubRepository: "owner/public", publicUrl: `https://example.com/patterns/${slug}`, publishedAt: "2026-10-25T10:00:00.000Z", githubCommitSha: "c".repeat(40) } : base;
+  currentArticle = published ? { ...base, status: "published", publishedPath: publicPath, publishedSha: "public-sha", publishedBranch: "main", githubRepository: "owner/public", publicUrl: `https://example.com/patterns/${slug}`, pdfUrl: `https://example.com/pdfs/${slug}.pdf`, publishedAt: "2026-10-25T10:00:00.000Z", githubCommitSha: "c".repeat(40) } : base;
   privateFiles = new Map([[draftPath, { sha: "draft-sha", content: JSON.stringify(currentArticle) }], [`${privateRoot}/featured.png`, { sha: "feat-sha" }], [`${privateRoot}/photos/one.png`, { sha: "photo-sha" }]]);
-  publicFiles = published ? new Map([[publicPath, { sha: "public-sha", content: `---\nslug: "${slug}"\n---\n## Instructions\nWork stitches.` }], [`${imageRoot}/featured.png`, { sha: "pub-image-sha" }], [`${imageRoot}/photo-one.png`, { sha: "pub-photo-sha" }], ["public/images/patterns/shared.png", { sha: "shared-sha" }]]) : new Map();
+  publicFiles = published ? new Map([[publicPath, { sha: "public-sha", content: `---\nslug: "${slug}"\n---\n## Instructions\nWork stitches.` }], [pdfPath, { sha: "public-pdf-sha" }], [`${imageRoot}/featured.png`, { sha: "pub-image-sha" }], [`${imageRoot}/photo-one.png`, { sha: "pub-photo-sha" }], ["public/images/patterns/shared.png", { sha: "shared-sha" }]]) : new Map();
   failPath = ""; failStatusSave = false; deletions = []; shaReads = [];
 }
 reset(false);
@@ -62,8 +62,8 @@ assert.equal(deletions.length, 0, "stale draft cannot be deleted");
 const unpublished = await route.DELETE(request("unpublish", "Unpublish"), context);
 assert.equal(unpublished.status, 200);
 const unpublishData = await unpublished.json();
-assert.equal(unpublishData.article.status, "draft"); assert.equal(unpublishData.article.publicUrl, undefined); assert.equal(unpublishData.article.publishedPath, undefined); assert.equal(unpublishData.article.publishedBranch, undefined); assert.equal(unpublishData.article.githubCommitSha, undefined);
-assert.equal(publicFiles.has(publicPath), false); assert.equal(publicFiles.has(`${imageRoot}/featured.png`), false); assert.equal(publicFiles.has(`${imageRoot}/photo-one.png`), false);
+assert.equal(unpublishData.article.status, "draft"); assert.equal(unpublishData.article.publicUrl, undefined); assert.equal(unpublishData.article.pdfUrl, undefined); assert.equal(unpublishData.article.publishedPath, undefined); assert.equal(unpublishData.article.publishedBranch, undefined); assert.equal(unpublishData.article.githubCommitSha, undefined);
+assert.equal(publicFiles.has(publicPath), false); assert.equal(publicFiles.has(pdfPath), false); assert.equal(publicFiles.has(`${imageRoot}/featured.png`), false); assert.equal(publicFiles.has(`${imageRoot}/photo-one.png`), false);
 assert.equal(publicFiles.has("public/images/patterns/shared.png"), true);
 assert.equal(privateFiles.has(draftPath), true); assert.equal(privateFiles.has(`${privateRoot}/featured.png`), true);
 assert.equal(types.hasPublicVersion(currentArticle), false);
